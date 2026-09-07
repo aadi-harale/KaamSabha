@@ -115,6 +115,32 @@ function stageLabel(locale: Locale, stage: WorkOrder['stage']) {
   const key = stage === 'completed' ? 'completed' : stage === 'offered' ? 'offered' : stage === 'en-route' ? 'travelling' : stage === 'arrived' ? 'arrival' : stage === 'working' ? 'working' : stage.includes('verification') ? 'verification' : stage === 'cancelled' ? 'cancelled' : null;
   return key ? translate(locale, key) : stage;
 }
+function humanLabel(value: string) {
+  return value
+    .replaceAll('_', ' ')
+    .replaceAll('-', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+const eventLabels: Record<string, string> = {
+  APP_BOOTSTRAPPED: 'Workspace started',
+  AUTH_SIGNED_IN: 'User signed in',
+  BOOKING_CREATED: 'Booking created',
+  DISPATCH_ASSIGNED: 'Worker assigned',
+  JOB_STAGE_CHANGED: 'Job status changed',
+  DECISION_CHALLENGED: 'Decision challenged',
+  CHALLENGE_REPLAYED: 'Decision replayed',
+  CHALLENGE_ADJUDICATED: 'Challenge decided',
+  CHALLENGE_REMEDIED: 'Remedy applied',
+  CHALLENGE_CLOSED: 'Challenge closed',
+  POLICY_PROPOSED: 'Constitution change proposed',
+  POLICY_SIMULATED: 'Constitution simulation completed',
+  POLICY_VOTE_CAST: 'Member vote recorded',
+  POLICY_ACTIVATED: 'Constitution activated',
+};
+function eventLabel(value: string) {
+  return eventLabels[value] ?? humanLabel(value);
+}
 const protectionIntents: { value: ProtectionIntent; label: string }[] = [
   {
     value: 'fair-opportunity',
@@ -256,7 +282,7 @@ function AppShell({
           <span>
             <Users size={21} />
           </span>
-          {t('appName')}<small>Worker-governed service workspace</small>
+          {t('appName')}<small>Cooperative service network</small>
         </Link>
         <nav aria-label={t('primaryNavigation')}>
           {expectedRole !== 'admin' && navigation.map(([href, label]) => (
@@ -283,9 +309,7 @@ function AppShell({
         </nav>
       </header>
       <div className="live-context">
-        <span>
-          {ready ? t('offlineMode') : 'Loading workspace…'}
-        </span>
+        <span className="demo-mode">{ready ? 'Demo mode' : 'Loading…'}</span>
         {unread > 0 && <button className="context-action" onClick={() => void run((repo) => markNotificationsRead(repo, { role: persona, id: persona === 'worker' ? state.session.memberId : persona === 'customer' ? 'CUSTOMER-01' : 'OPS-01' }))}>{unread} updates. Mark read</button>}
         <span className="signed-in-as">
           <UserRound aria-hidden="true" /> {authenticated.userId}
@@ -333,9 +357,7 @@ function AppShell({
           ))}
         </nav>
       )}
-      <footer className="live-footer">
-        Synthetic Pune demonstration. Device-local fallback is explicit; no live payment processing.
-      </footer>
+      <footer className="live-footer"><details><summary>About this demo</summary><p>Synthetic Pune data stored on this device. Payments are illustrative.</p></details></footer>
     </>
   );
 }
@@ -1397,14 +1419,16 @@ export function WorkerApplication({
         </DialogContent>
       </Dialog>
       <Heading
-        title={`${member.name} ${t('workerWork')}`}
-        text={t('workerSub')}
+        title={`Good evening, ${member.name.split(' ')[0]}`}
+        text="Your jobs, earnings and work opportunities."
       />
       <div className={`worker-section worker-section-${section}`}>
       <section className="worker-home-summary" aria-label="Today at a glance">
-        <div><span>{t('availability')}</span><strong>{profile.availability}</strong></div>
-        <div><span>{t('nextJob')}</span><strong>{activeMine[0] ? serviceLabel(state.session.locale, activeMine[0].job.category) : t('noActiveOffer')}</strong></div>
+        <div className="summary-availability"><span>{t('availability')}</span><strong className="status-chip">{profile.availability.toUpperCase()}</strong></div>
+        <div className="summary-next"><span>{t('nextJob')}</span><strong>{activeMine[0] ? serviceLabel(state.session.locale, activeMine[0].job.category) : t('noActiveOffer')}</strong>{activeMine[0] && <small>{zones[activeMine[0].job.zone]}, {stageLabel(state.session.locale, activeMine[0].stage)}</small>}</div>
         <div><span>{t('settledEarnings')}</span><strong>{money(funds.total)}</strong></div>
+        <div><span>Work opportunities</span><strong>{opportunities.length}</strong></div>
+        <div><span>Jobs completed</span><strong>{mine.filter((job) => job.stage === 'completed').length}</strong></div>
         <div><span>{t('todaysWorkload')}</span><strong>{activeMine.length}/{profile.workload.maximumJobsToday} jobs</strong><progress max={Math.max(profile.workload.maximumJobsToday, 1)} value={activeMine.length} /></div>
       </section>
       <div className="worker-live-grid">
@@ -1670,15 +1694,15 @@ export function WorkerApplication({
             );
           })}
           <details className="live-details">
-            <summary>Why was I skipped? / {skipped.length} local jobs</summary>
+            <summary>Why wasn’t this job offered to me? ({skipped.length})</summary>
             {skipped.map((job) => {
               const snap = latestSnapshot(state, job)!;
               return (
                 <button key={job.id} onClick={() => setReceipt(snap)}>
                   <span>
-                    {job.id} / selected {workerName(state, job.workerId)}
+                    {job.id}. Another eligible member, {workerName(state, job.workerId)}, was selected under the active rule.
                   </span>
-                  <strong>Inspect tie-break</strong>
+                  <strong>See how the decision was made</strong>
                 </button>
               );
             })}
@@ -1787,7 +1811,7 @@ export function WorkerApplication({
           </details>
           <details>
             <summary>{t('challenges')}</summary>
-            {state.challenges.filter((item) => item.openedBy.id === memberId).map((item) => <p key={item.id}><strong>{item.status}</strong> / {item.reason}</p>)}
+            {state.challenges.filter((item) => item.openedBy.id === memberId).map((item) => <p key={item.id}><strong>{humanLabel(item.status)}</strong> / {item.reason}</p>)}
             {!state.challenges.some((item) => item.openedBy.id === memberId) && <p>You haven’t challenged any decisions.</p>}
             <label className="challenge-reason">
               <span>What should the cooperative check when you challenge a decision?</span>
@@ -1884,7 +1908,7 @@ export function WorkerApplication({
             .toReversed()
             .map((item) => (
               <article key={item.id}>
-                <div><strong>{item.issueType.replaceAll('-', ' ')}</strong><span className="stage">{item.status.replaceAll('-', ' ')}</span></div>
+                <div><strong>{humanLabel(item.issueType)}</strong><span className="stage">{humanLabel(item.status)}</span></div>
                 <p>{item.description}</p>
                 {item.comments.map((comment) => <small key={comment.id}>{comment.author.role}: {comment.message}</small>)}
                 {item.raisedBy.role === 'customer' && (
@@ -2556,8 +2580,8 @@ function OperationsIssues() {
       {state.issues.toReversed().map((item) => (
         <article className="admin-issue-row" key={item.id}>
           <div className="admin-issue-heading">
-            <div><strong>{item.issueType.replaceAll('-', ' ')}</strong><span>{item.id} / {item.raisedBy.role} {item.raisedBy.id}{item.jobId ? ` / ${item.jobId}` : ''}</span></div>
-            <Choice label="Status" value={item.status} values={statuses.map((status) => ({ value: status, label: status.replaceAll('-', ' ') }))} onChange={(status) => void run((repo) => updateIssueStatus(repo, item.id, status as IssueStatus))} />
+            <div><strong>{humanLabel(item.issueType)}</strong><span>{item.id} / {humanLabel(item.raisedBy.role)} {item.raisedBy.id}{item.jobId ? ` / ${item.jobId}` : ''}</span></div>
+            <Choice label="Status" value={item.status} values={statuses.map((status) => ({ value: status, label: humanLabel(status) }))} onChange={(status) => void run((repo) => updateIssueStatus(repo, item.id, status as IssueStatus))} />
           </div>
           <p>{item.description}</p>
           <div className="issue-comments">
@@ -2686,20 +2710,20 @@ export function OperationsApplication({
       <Heading
         title={
           governance
-            ? 'Cooperative constitution'
+            ? 'Cooperative Constitution'
             : section === 'jobs'
-              ? 'Jobs and events'
+              ? 'Jobs and Events'
               : section === 'workers'
-                ? 'Worker-members'
+                ? 'Worker Members'
                 : section === 'settlements'
                   ? 'Settlements'
                   : section === 'demand'
-                    ? 'Demand outlook'
+                    ? 'Demand Outlook'
                     : section === 'federation'
                       ? 'Federation Opportunity Exchange'
                     : section === 'issues'
-                      ? 'Issues and challenges'
-                      : 'Cooperative operations'
+                      ? 'Issues and Challenges'
+                      : 'Cooperative Operations'
         }
         text={
           governance
@@ -2709,28 +2733,6 @@ export function OperationsApplication({
             : section === 'overview'
               ? 'Every counter comes from this device-local event envelope.'
               : 'A focused register from the same cooperative records.'
-        }
-        action={
-          <div className="ops-tabs">
-            <Link
-              aria-current={!governance ? 'page' : undefined}
-              href="/operations"
-            >
-              Operations
-            </Link>
-            <Link
-              aria-current={governance ? 'page' : undefined}
-              href="/governance"
-            >
-              Governance
-            </Link>
-            <Link
-              aria-current={section === 'federation' ? 'page' : undefined}
-              href="/operations/federation"
-            >
-              Federation
-            </Link>
-          </div>
         }
       />
       {section === 'federation' ? (
@@ -2773,8 +2775,8 @@ export function OperationsApplication({
                 .reverse()
                 .map((e) => (
                   <div className="event-row" key={e.id}>
-                    <span>{e.type}</span>
-                    <strong>{e.subject}</strong>
+                    <span>{eventLabel(e.type)}</span>
+                    <strong title={e.subject}>{e.subject}</strong>
                     <small>{e.detail}</small>
                   </div>
                 ))}
@@ -2810,7 +2812,7 @@ export function OperationsApplication({
                   <div className="register-row" key={profile.id}>
                     <strong>{worker.name}</strong>
                     <span>{profile.certificate}</span>
-                    <span>{profile.availability}</span>
+                    <span><i className="status-chip">{profile.availability.toUpperCase()}</i></span>
                     <small>
                       {profile.representative === 'welfare-representative'
                         ? 'Welfare representative'

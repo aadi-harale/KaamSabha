@@ -31,7 +31,7 @@ Configured mode maps a visible User ID to a private `userid@auth.kaamsabha.local
 
 `supabase/migrations/001..011` defines the normalized schema, constraints, indexes, role helpers, RLS, private evidence storage and Realtime publications. Migration 011 adds immutable profile identity fields, shared issues/comments, past-order indexing and role-field protection. `scripts/seed-auth.mjs` creates customer01, all 12 worker accounts and admin01 using server-only environment passwords.
 
-No Supabase URL, publishable key, service key or database credential is present. Migrations were not applied to a hosted project and connected repository behavior is not verified. The app therefore labels the verified mode `Offline demo mode`.
+No Supabase URL, publishable key, service key or database credential is present. Migrations were not applied to a hosted project and connected repository behavior is not verified. The app therefore labels the verified workspace `Demo mode`; the sign-in screen identifies the device-local fallback.
 
 # Core invariants
 
@@ -39,7 +39,7 @@ Hard skill, active status, availability, schedule, radius, SLA and workload safe
 
 # Design state
 
-AGENTS.md is authoritative. Palette: white canvas, #EDF1F3 register, #172B36 ink, #006B60 cooperative action, #526779 slate and #F3C66B warning. Segoe UI/system sans uses Devanagari-capable fallbacks. Same jobs, same workers, different rule remains the one bold visual moment. Customer is service-first, worker is task-first, operations is record-first and governance is consequence-first. Borders encode records and state; gradients, glass, fake maps and repeated decorative cards remain excluded. English, Hindi and Marathi navigation and critical role controls use centralized resources.
+AGENTS.md is authoritative. The application canvas is #F6F8FA with #17212B ink, #0F6B5C cooperative action, #5B6672 secondary text and #DDE3E8 borders. Segoe UI/system sans uses Devanagari-capable fallbacks. Same jobs, same workers, different rule remains the one bold visual moment. Customer is service-first, worker is task-first, operations is record-first and governance is consequence-first. Borders encode records and state; gradients, glass, fake maps and repeated decorative cards remain excluded. English, Hindi and Marathi navigation and critical role controls use centralized resources.
 
 # Verified functionality
 
@@ -58,6 +58,8 @@ AGENTS.md is authoritative. Palette: white canvas, #EDF1F3 register, #172B36 ink
 - Migration 012 adds normalized federation tables, participant/admin RLS and Realtime publication for opportunity requests. Hosted execution still requires credentials.
 
 # Production browser evidence
+
+The final interface correction was inspected at 1440×900 and 390×844. Operations uses a 252 px desktop navigation rail, one content navigation system, a restrained demo-status strip and stable register grids. Worker home leads with the next job, availability and compact livelihood metrics; worker issues stays within the mobile viewport and gives enabled actions clear emphasis. Operations, Jobs, Workers, Issues, Worker Home, Current Job, Fair Work and Worker Issues rendered with no error overlay. Internal event, issue and status codes are presented as human-readable labels.
 
 A production-browser authentication walkthrough at `http://127.0.0.1:8787` created `KMS-LIVE-00001` through all five booking steps. Active constitution v2 assigned Ravi Shinde with ₹760 service pay, ₹87 estimated costs and ₹673 estimated net. The customer map showed Ravi, 1 km, 10 minutes and the service promise. After logout, `ravi01` alone showed that offer, its workload summary and the simplified receipt. Customer→worker and admin→customer direct URL attempts redirected to the signed-in role home. Customer, worker and admin headers contained no cross-role selector. Login, customer home/map, worker home/current/Fair Work/receipt and admin overview/governance were visually inspected at the available wide and narrow app-panel sizes.
 

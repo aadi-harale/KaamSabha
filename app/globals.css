@@ -20,17 +20,17 @@
   --radius-lg: 8px;
 }
 :root {
-  --background: #eef2f4;
-  --foreground: #172b36;
-  --primary: #006b60;
+  --background: #f6f8fa;
+  --foreground: #17212b;
+  --primary: #0f6b5c;
   --primary-foreground: #fff;
   --popover: #fff;
-  --muted: #e5f2ee;
-  --muted-foreground: #526779;
-  --border: #cbd5da;
+  --muted: #eaf4f1;
+  --muted-foreground: #5b6672;
+  --border: #dde3e8;
   --white: #fff;
   --amber: #f3c66b;
-  --slate: #526779;
+  --slate: #5b6672;
 }
 * {
   box-sizing: border-box;
@@ -79,7 +79,7 @@ h3 {
   line-height: 1.2;
 }
 h1 {
-  font-size: 40px;
+  font-size: clamp(32px, 3vw, 38px);
   font-weight: 650;
   letter-spacing: -1.3px;
 }
