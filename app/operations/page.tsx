@@ -1,4 +1,4 @@
-import { Operations } from '@/components/product-views';
+import { OperationsApplication } from '@/components/application';
 export default function Page() {
-  return <Operations />;
+  return <OperationsApplication />;
 }

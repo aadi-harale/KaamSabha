@@ -1,4 +1,4 @@
-import { CustomerView } from '@/components/product-views';
+import { CustomerApplication } from '@/components/application';
 export default function Page() {
-  return <CustomerView />;
+  return <CustomerApplication />;
 }

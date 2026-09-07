@@ -230,7 +230,7 @@ export function Governance() {
               A customer cancellation after departure must not reduce worker
               reliability.
             </p>
-            <Link href="/worker?challenge=true">See this rule enforced</Link>
+            <Link href="/demo/worker?challenge=true">See this rule enforced</Link>
           </div>
           <details>
             <summary>Policy version history</summary>
@@ -425,6 +425,7 @@ export function Governance() {
                   <Tradeoff
                     a={p.simulation.current}
                     b={p.simulation.proposed}
+                    basis={`vs. active policy (v${state.active.version})`}
                   />
                   {p.simulation.proposed.fulfilled < 100 && (
                     <p className="inline-warning">
@@ -698,7 +699,7 @@ export function AppealDialog({
           <summary>Inspect frozen evidence</summary>
           <pre>{JSON.stringify(item.frozen, null, 2)}</pre>
         </details>
-        <Link className="text-link" href="/governance">
+        <Link className="text-link" href="/demo/governance">
           Next: test a constitution change <ArrowRight size={16} />
         </Link>
       </DialogContent>
@@ -895,7 +896,7 @@ export function WorkerView() {
                 {meena.id} / verified in{' '}
                 {meena.skills.join(' and ').toLowerCase()}
               </p>
-              <Link className="text-link" href="/governance">
+              <Link className="text-link" href="/demo/governance">
                 Take part in the next vote
               </Link>
             </div>

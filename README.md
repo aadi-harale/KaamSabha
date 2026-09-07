@@ -15,7 +15,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000/demo. `/` opens the same experience; `?demo=true` is also usable because every route is a credential-free local demo.
+Open http://localhost:3000/app for the stateful application. `/` opens the same persona entry point. Open `/demo` for the unchanged deterministic judge presentation.
 
 ```sh
 npm test
@@ -33,14 +33,18 @@ npm run build
 
 ## Architecture
 
-React 19 + TypeScript, Vite/Vinext App Router and Tailwind. Accessible Base UI/shadcn dialogs and select controls come from the retained scaffold. No application backend or external authentication. Context state is persisted in versioned localStorage; browser storage is a convenience, not an audit-security boundary.
+React 19 + TypeScript, Vite/Vinext App Router and Tailwind. Accessible Base UI/shadcn dialogs and select controls come from the retained scaffold. No application backend or external authentication. One versioned application envelope is persisted atomically in localStorage behind repository interfaces; browser storage is a device-local prototype boundary, not an audit-security boundary.
 
 - `lib/engine.ts`: seeded dataset, pure dispatch, metrics, frozen receipts, policy lifecycle and appeals.
 - `lib/booking.ts`: live booking interval reservations, including out-of-order requests.
 - `lib/store.tsx`: shared local state and optional browser WebMCP comparison tool.
+- `lib/application/repositories.ts`: replaceable repository interfaces, atomic local adapter, revision checks and separate demo persistence.
+- `lib/application/service.ts`: booking, offer, work, settlement, governance and Replay Court commands.
+- `lib/application/model.ts`: jobs, events, journals and SHA-256 hash-chained `DecisionSnapshot` records.
+- `components/application.tsx`: customer, worker-member and operations personas.
 - `components/kaamsabha.tsx`: shared shell, comparison, metrics and receipts.
 - `components/product-views.tsx`: governance, worker, customer and operations flows.
-- `app/`: `/demo`, `/worker`, `/customer`, `/governance`, `/operations`.
+- `app/`: `/app`, `/customer`, `/worker`, `/governance`, `/operations`, plus isolated `/demo/*` judge routes.
 - `tests/`: domain and workflow integration tests.
 
 Lint covers application code and configuration; unchanged generated `components/ui` and `hooks/use-mobile.ts` are excluded because the scaffold itself fails its strict lint profile.
@@ -69,13 +73,21 @@ There are no real worker interviews, field validation, wage guarantees, legal ce
 2. **15–30:** Run comparison. Read the customer ETA cost, lowest weekly livelihood change and service result. Expand the register for all members.
 3. **30–45:** click Meena. Inspect the exact constitution, before-decision weekly net, ETA, eligibility and net calculation. Verify assignment replay.
 4. **45–60:** close the receipt; choose Challenge a decision. Challenge the seeded penalty, then Replay decision. See the violation, removed penalty and corrected attribution.
-5. **60–80:** follow the link to Our rules. Simulate before voting, open the member vote, cast the demo support vote. Nine of twelve have now voted and seven support. Activate v3.
+5. **60–80:** follow the link to Our rules. Simulate before voting, open the member vote, cast the demo support vote. Nine of twelve have now voted and seven support. Activate v3. The guided routes live under `/demo/*` and retain their own deterministic state.
 6. **80–90:** return to the dispatch lab. Policy v3 is active. New bookings and comparison use it; frozen receipts retain their original policy.
 
 Demo controls reset policies, ballots, cases, bookings, rates and comparison state. The worker selector lets judges follow the member actually assigned to a customer booking. That member can record departure and completion. Customer cancellation records real interaction timestamps; completed bookings support an explicitly simulated payment and invoice.
 
+## Stateful application walkthrough
+
+The standard routes share one device-local repository. Create a booking in `/customer`; inspect its frozen dispatch receipt; switch to the named worker in `/worker`; then accept, travel, arrive, start and complete. Completion posts the worker's net contribution after the cooperative levy, an equal dividend to each active member and the remaining reserve as separate ledger entries.
+
+A worker may decline an offer, which records the decline and dispatches the same job again while excluding that member. Passed-over eligible members see the local job under “Why was I skipped?” Customer or worker cancellation records frozen evidence. A member opens a challenge from that decision; Operations replays the frozen inputs, records the verdict, applies the appropriate ledger/no-change remedy, then closes the case without changing the original snapshot.
+
+In `/governance`, propose parameters, replay the same historical and local jobs, open an empty ballot, cast distinct member votes, and activate only after quorum 9 and threshold 7. New bookings freeze the new version. Worker projections show the previous and active policy outcomes side by side; settled wallet entries never change retroactively.
+
 ## Limits
 
-This is a local, single-browser prototype, not a multi-user production system. LocalStorage can be edited; snapshots are reproducible but not cryptographically tamper-evident. The ballot contains eight seeded votes and one user-controlled member vote. Committee review is a stopping state, not an automated factual judgment. No federated exchange is connected. Verification, service ratings and estimates are seeded; payment and invoices are mocks. The scaffold uses a beta framework and its dependency audit must be reviewed before any real deployment.
+This is a local, single-browser prototype, not a multi-user production system. LocalStorage can be edited. Decision snapshots have SHA-256 integrity digests and previous-hash links, but a user controlling browser storage can replace the entire chain; this is not server-grade tamper evidence. Application ballots begin empty and accept one vote per seeded member. The isolated judge demo retains its eight seeded votes. Human-review is a stopping state until an operator resolves it. No federated exchange, authentication, KYC, messaging, localization or live payment is connected.
 
 Current verified state and remaining issues are recorded in `AGENT_STATE.md`.

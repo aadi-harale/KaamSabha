@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { flushSync } from 'react-dom';
+import { demoStateRepository } from './application/repositories';
 import {
   assumptions,
   baseline,
@@ -64,9 +65,8 @@ function useAppState() {
   useEffect(() => {
     queueMicrotask(() => {
       try {
-        const saved = localStorage.getItem('kaamsabha-v2');
-        if (saved) {
-          const parsed = JSON.parse(saved);
+        const parsed = demoStateRepository<State>(localStorage).load();
+        if (parsed) {
           if (
             parsed.active?.policyId &&
             Array.isArray(parsed.appeals) &&
@@ -83,7 +83,7 @@ function useAppState() {
   useEffect(() => {
     if (ready) {
       try {
-        localStorage.setItem('kaamsabha-v2', JSON.stringify(state));
+        demoStateRepository<State>(localStorage).save(state);
       } catch {
         /* In-memory fallback. */
       }

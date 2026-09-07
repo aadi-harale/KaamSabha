@@ -1,4 +1,4 @@
 import { ApplicationHome } from '@/components/application';
-export default function Home() {
+export default function Page() {
   return <ApplicationHome />;
 }

@@ -1,4 +1,4 @@
-import { WorkerView } from '@/components/product-views';
+import { WorkerApplication } from '@/components/application';
 export default function Page() {
-  return <WorkerView />;
+  return <WorkerApplication />;
 }

@@ -55,10 +55,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <nav aria-label="Main navigation">
           {[
             ['/demo', 'Dispatch lab'],
-            ['/worker', 'My work'],
-            ['/customer', 'Book a service'],
-            ['/governance', 'Our rules'],
-            ['/operations', 'Operations'],
+            ['/demo/worker', 'My work'],
+            ['/demo/customer', 'Book a service'],
+            ['/demo/governance', 'Our rules'],
+            ['/demo/operations', 'Operations'],
           ].map(([href, label]) => (
             <Link
               key={href}
@@ -80,7 +80,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           Pune service cooperative{' '}
           <span className="muted">/ illustrative workspace</span>
         </span>
-        <Link href="/governance">
+        <Link href="/demo/governance">
           <span className="status-dot" />
           Policy v{state.active.version} active
         </Link>
@@ -115,8 +115,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
             >
               Run constitution
             </Button>
-            <Link href="/worker?challenge=true">Load challenge</Link>
-            <Link href="/governance">Load policy vote</Link>
+            <Link href="/demo/worker?challenge=true">Load challenge</Link>
+            <Link href="/demo/governance">Load policy vote</Link>
             <p>Illustrative cooperative operating assumptions</p>
             <label>
               Travel cost, ₹ per km
@@ -246,7 +246,7 @@ export function MetricsTable({
     </div>
   );
 }
-export function Tradeoff({ a, b }: { a: Metrics; b: Metrics }) {
+export function Tradeoff({ a, b, basis = 'vs. standard dispatch' }: { a: Metrics; b: Metrics; basis?: string }) {
   return (
     <div className="tradeoff" aria-live="polite">
       <div>
@@ -265,6 +265,7 @@ export function Tradeoff({ a, b }: { a: Metrics; b: Metrics }) {
         <p>
           {money(a.lowest)} to {money(b.lowest)} net
         </p>
+        <p className="metric-basis">{basis}</p>
       </div>
       <div>
         <span>Service commitment</span>
@@ -291,6 +292,11 @@ export function ReceiptDialog({
   );
   const fastestEta =
     receipt.candidates.find((c) => c.worker.id === receipt.fastest)?.eta ?? 0;
+  const exportReceipt = structuredClone(receipt) as Receipt & {
+    job: Receipt['job'] & { requestedAtMinutesSince2026_08_31_IST?: number };
+  };
+  exportReceipt.job.requestedAtMinutesSince2026_08_31_IST = exportReceipt.job.requested;
+  delete (exportReceipt.job as Partial<Receipt['job']>).requested;
   return (
     <Dialog
       open={!!receipt}
@@ -402,7 +408,11 @@ export function ReceiptDialog({
             {receipt.policy.constraints.sla} min. Recorded {receipt.timestamp}.
           </p>
           <p className="fine">{receipt.tieBreak}</p>
-          <pre>{JSON.stringify(receipt, null, 2)}</pre>
+          <pre>{JSON.stringify(exportReceipt, null, 2)}</pre>
+          <p className="fine">
+            requestedAtMinutesSince2026_08_31_IST is the service minute offset
+            from 31 August 2026 00:00 India Standard Time.
+          </p>
         </details>
         <Button
           variant="outline"
@@ -604,7 +614,7 @@ export function Demo() {
             <br />
             <strong>Control over opportunity is the next step.</strong>
           </p>
-          <Link href="/governance">
+          <Link href="/demo/governance">
             Read the member-approved rule <ArrowRight size={15} />
           </Link>
         </aside>
@@ -698,7 +708,7 @@ export function Demo() {
           </span>
           <ArrowRight />
         </button>
-        <Link href="/worker?challenge=true">
+        <Link href="/demo/worker?challenge=true">
           <Scale />
           <span>
             <strong>Challenge a decision</strong>
@@ -706,7 +716,7 @@ export function Demo() {
           </span>
           <ArrowRight />
         </Link>
-        <Link href="/governance">
+        <Link href="/demo/governance">
           <Users />
           <span>
             <strong>Change the rule</strong>

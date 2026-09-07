@@ -1,4 +1,4 @@
-import { Governance } from '@/components/product-views';
+import { OperationsApplication } from '@/components/application';
 export default function Page() {
-  return <Governance />;
+  return <OperationsApplication governance />;
 }
