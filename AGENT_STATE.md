@@ -44,6 +44,7 @@ AGENTS.md is authoritative. The application canvas is #F6F8FA with #17212B ink, 
 # Verified functionality
 
 - Deterministic dispatch, golden vectors, workload exclusions and all six safeguards pass tests.
+- Assignment receipts now render the canonical executable policy rule from the same `Policy` object consumed by dispatch: hard eligibility first, the member-approved livelihood floor and maximum added wait second, optional job-net tie-breaking only when enabled, and emergency bypass stated explicitly.
 - Booking creates a job, opportunity, event, frozen receipt and worker notification. Decline is zero-penalty and redispatches deterministically.
 - OSRM road geometry feeds one saved route shared by customer and worker; routing/tile failures have explicit accessible fallbacks.
 - OTP start/completion, evidence, change orders, settlement, rating firewall, cancellation, governance, accountability, catch-up and Replay Court remain present.
@@ -80,10 +81,11 @@ The production browser ran the federation scenario, rendered the Leaflet capacit
 
 # Verified commands
 
-- `npm test -- --reporter=dot`: 80 tests passed across 10 files.
+- `npm test -- --reporter=dot`: 85 tests passed across 11 files.
 - `npm run typecheck`: passed.
-- `npm run lint`: passed.
+- `npm run lint`: passed with 0 warnings and 0 errors.
 - `npm run build`: passed; the existing routes plus /operations/federation emitted.
+- GitHub Actions `Verify` runs install, tests, typecheck, lint and production build on pull requests and main; Iteration 1 passed all gates on the merged main commit.
 - Production browser: customer, assigned worker and admin login; cross-role redirects; five-step booking; real map; member-bound job; simplified receipt; responsive role navigation; no application error overlay observed.
 
 # Next actions
