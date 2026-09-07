@@ -51,6 +51,18 @@ The real workspace will use separate storage and domain services. The guided vie
 
 No static placeholder counter or dead acceptance-path control remained after verification. Production-only requirements remain deferred below.
 
+## Explicit implementation decisions within the confirmed scope
+
+The briefs did not specify dividend arithmetic. This build uses an illustrative 5% cooperative levy on payout, makes 50% of that levy distributable, divides it equally across the 12 active members and posts the rounding remainder to the cooperative reserve. The percentages are frozen in each policy and receipt path but require cooperative ratification before real use.
+
+“Numbers changing under the new policy” is presented as a recalculated allocation projection over the 100 seed requests plus non-cancelled local requests. Settled wallet entries remain immutable; policy activation never rewrites earned money. This separates the counterfactual thesis from accounting history.
+
+Operations “member coverage” means unique members present in candidate evidence for local dispatch decisions, divided by 12. It therefore starts at zero and becomes traceable to bookings rather than repeating a static roster count.
+
+A correctly recorded customer-after-departure cancellation produces a confirmed replay. Its appropriate remedy is a recorded no-financial-change action followed by closure. Violation remedies post compensating ledger rows; original snapshots remain unchanged.
+
+The original judge journey is isolated under `/demo/*`; the standard route names point to the shared stateful application. The receipt exports rename `requested` to `requestedAtMinutesSince2026_08_31_IST`, matching the engine's minute-offset model without changing dispatch arithmetic.
+
 ## Deferred production flags
 
 PostgreSQL, multi-tenancy, phone/OTP and phone-recovery, KYC vendor selection, SMS/WhatsApp, Marathi/Hindi localization and live payments remain outside this device-local run. Vote eligibility remains the existing 12-member rule; active-member or tenure refinements require a future cooperative decision. The local repository interfaces are intended replacement seams, not a claim of server durability or access control.
