@@ -12,7 +12,8 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:auth": "node scripts/seed-auth.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

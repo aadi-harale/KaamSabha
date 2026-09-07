@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Clock,
   IndianRupee,
@@ -13,8 +13,18 @@ import {
   Camera,
   Languages,
   Home,
-  ListChecks,
   Menu,
+  LogOut,
+  UserRound,
+  BriefcaseBusiness,
+  History,
+  CalendarDays,
+  Vote,
+  CircleAlert,
+  Droplets,
+  SprayCan,
+  Refrigerator,
+  HeartHandshake,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -67,9 +77,13 @@ import {
   markNotificationsRead,
   submitCustomerFeedback,
   submitWorkabilitySignal,
-  switchPersona,
   updateWorkloadSettings,
   wallet,
+  signInApplication,
+  signOutApplication,
+  raiseIssue,
+  addIssueResponse,
+  updateIssueStatus,
 } from '@/lib/application/service';
 import {
   type CourtCase,
@@ -80,11 +94,15 @@ import {
   type ProtectionIntent,
   type RefusalReason,
   type WorkOrder,
+  type AppRole,
+  type IssueType,
+  type IssueStatus,
 } from '@/lib/application/model';
 import { priceBands } from '@/lib/protections';
 import { ActiveTravelMap, DispatchDecisionMap } from '@/components/dispatch-map';
 import { compressEvidence } from '@/lib/application/image-evidence';
 import { localeOptions, serviceLabel, translate, type Locale } from '@/lib/i18n';
+import { roleLanding } from '@/lib/application/auth';
 import './application.css';
 
 const money = (value: number) =>
@@ -158,6 +176,17 @@ function LanguageControl({ compact = false }: { compact?: boolean }) {
     </label>
   );
 }
+function NavigationIcon({ href }: { href: string }) {
+  if (href.endsWith('/current')) return <BriefcaseBusiness aria-hidden="true" />;
+  if (href.endsWith('/fair-work')) return <Scale aria-hidden="true" />;
+  if (href.endsWith('/issues')) return <CircleAlert aria-hidden="true" />;
+  if (href.endsWith('/bookings')) return <CalendarDays aria-hidden="true" />;
+  if (href.endsWith('/past')) return <History aria-hidden="true" />;
+  if (href.endsWith('/profile')) return <UserRound aria-hidden="true" />;
+  if (href.endsWith('/more')) return <Menu aria-hidden="true" />;
+  if (href === '/governance') return <Vote aria-hidden="true" />;
+  return <Home aria-hidden="true" />;
+}
 function AppShell({
   persona,
   children,
@@ -167,43 +196,84 @@ function AppShell({
 }) {
   const { state, error, clearError, ready, run } = useApplication();
   const path = usePathname();
+  const router = useRouter();
   const t = (key: Parameters<typeof translate>[1]) => translate(state.session.locale, key);
+  const expectedRole: AppRole = persona === 'operations' ? 'admin' : persona;
+  const authenticated = state.session.auth;
   const unread = state.notifications.filter((item) => !item.readAt && item.recipient.role === persona && (persona !== 'worker' || item.recipient.id === state.session.memberId)).length;
   useEffect(() => {
     document.documentElement.lang = state.session.locale;
   }, [state.session.locale]);
+  useEffect(() => {
+    if (!ready) return;
+    if (!authenticated) router.replace('/');
+    else if (authenticated.role !== expectedRole)
+      router.replace(roleLanding(authenticated.role));
+  }, [authenticated, expectedRole, ready, router]);
+  if (!ready)
+    return <main className="auth-loading">Loading your workspace…</main>;
+  if (!authenticated || authenticated.role !== expectedRole)
+    return <main className="auth-loading">Checking access…</main>;
+  const navigation =
+    expectedRole === 'customer'
+      ? [
+          ['/customer', t('home')],
+          ['/customer/bookings', t('bookings')],
+          ['/customer/past', t('pastOrders')],
+          ['/customer/profile', t('profile')],
+        ]
+      : expectedRole === 'worker'
+        ? [
+            ['/worker', t('home')],
+            ['/worker/current', t('currentJob')],
+            ['/worker/fair-work', t('fairWork')],
+            ['/worker/issues', t('issues')],
+            ['/worker/more', t('more')],
+          ]
+        : [
+            ['/operations', t('overview')],
+            ['/operations/jobs', 'Jobs'],
+            ['/operations/workers', 'Workers'],
+            ['/operations/issues', t('issuesChallenges')],
+            ['/governance', t('governance')],
+            ['/operations/settlements', 'Settlements'],
+            ['/operations/demand', 'Demand'],
+          ];
+  const home = roleLanding(expectedRole);
   return (
     <>
       <a className="skip-link" href="#workspace">
         Skip to work area
       </a>
-      <header className="live-header">
-        <Link href="/app" className="live-brand">
+      <header className={`live-header role-${expectedRole}`}>
+        <Link href={home} className="live-brand">
           <span>
             <Users size={21} />
           </span>
           {t('appName')}<small>Worker-governed service workspace</small>
         </Link>
-        <nav aria-label="Persona switcher">
-          {(
-            [
-              ['customer', '/customer', t('roleCustomer')],
-              ['worker', '/worker', t('roleWorker')],
-              ['operations', '/operations', t('roleOperations')],
-            ] as const
-          ).map(([role, href, label]) => (
+        <nav aria-label={t('primaryNavigation')}>
+          {expectedRole !== 'admin' && navigation.map(([href, label]) => (
             <Link
               href={href}
-              key={role}
-              aria-current={persona === role ? 'page' : undefined}
+              key={href}
+              aria-current={path === href ? 'page' : undefined}
             >
               {label}
             </Link>
           ))}
-          <Link href="/demo" className="judge-link">
-            {t('judgeDemo')}
-          </Link>
-          <LanguageControl compact />
+          <button
+            className="header-logout"
+            onClick={() =>
+              void run(async (repo) => {
+                await signOutApplication(repo);
+                router.replace('/');
+              })
+            }
+          >
+            <LogOut aria-hidden="true" />
+            {t('logout')}
+          </button>
         </nav>
       </header>
       <div className="live-context">
@@ -211,11 +281,26 @@ function AppShell({
           {ready ? t('offlineMode') : 'Loading workspace…'}
         </span>
         {unread > 0 && <button className="context-action" onClick={() => void run((repo) => markNotificationsRead(repo, { role: persona, id: persona === 'worker' ? state.session.memberId : persona === 'customer' ? 'CUSTOMER-01' : 'OPS-01' }))}>{unread} updates. Mark read</button>}
-        <Link href="/governance">
-          <span className="status-dot" />
-          {t('activePolicy')} v{state.activeVersion}
-        </Link>
+        <span className="signed-in-as">
+          <UserRound aria-hidden="true" /> {authenticated.userId}
+        </span>
+        {expectedRole !== 'customer' && (
+          <Link href={expectedRole === 'admin' ? '/governance' : '/worker/fair-work'}>
+            <span className="status-dot" />
+            {expectedRole === 'worker' ? t('fairWork') : t('activePolicy')} v
+            {state.activeVersion}
+          </Link>
+        )}
       </div>
+      {expectedRole === 'admin' && (
+        <aside className="admin-side-nav" aria-label="Cooperative administration">
+          <strong>Cooperative administration</strong>
+          <span>Operations</span>
+          {navigation.slice(0, 4).map(([href, label]) => <Link href={href} key={href} aria-current={path === href ? 'page' : undefined}><NavigationIcon href={href} />{label}</Link>)}
+          <span>Governance and records</span>
+          {navigation.slice(4).map(([href, label]) => <Link href={href} key={href} aria-current={path === href ? 'page' : undefined}><NavigationIcon href={href} />{label}</Link>)}
+        </aside>
+      )}
       {error && (
         <div className="live-error" role="alert">
           {error}
@@ -224,9 +309,22 @@ function AppShell({
           </button>
         </div>
       )}
-      <main id="workspace" className="live-main" data-path={path}>
+      <main id="workspace" className={`live-main ${expectedRole === 'admin' ? 'admin-main' : ''}`} data-path={path}>
         {children}
       </main>
+      {expectedRole !== 'admin' && (
+        <nav
+          className={`role-bottom-nav ${expectedRole}`}
+          aria-label={t('mobileNavigation')}
+        >
+          {navigation.map(([href, label]) => (
+            <Link href={href} key={href} aria-current={path === href ? 'page' : undefined}>
+              <NavigationIcon href={href} />
+              <span>{label}</span>
+            </Link>
+          ))}
+        </nav>
+      )}
       <footer className="live-footer">
         Synthetic Pune demonstration. Device-local fallback is explicit; no live payment processing.
       </footer>
@@ -234,58 +332,70 @@ function AppShell({
   );
 }
 export function ApplicationHome() {
-  const { state, run } = useApplication();
-  const [role, setRole] = useState<'customer' | 'worker' | 'operations' | null>(null);
-  const [customerName, setName] = useState(state.session.customerName);
-  const [workerId, setWorkerId] = useState(state.session.memberId);
+  const { state, ready, repository } = useApplication();
+  const [role, setRole] = useState<AppRole>('customer');
+  const [userId, setUserId] = useState('');
+  const [password, setPassword] = useState('');
+  const [status, setStatus] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const router = useRouter();
-  const continueRole = () => {
-    if (!role) return;
-    void run(async (repo) => {
-      if (role === 'customer') await setCustomerName(repo, customerName);
-      await switchPersona(repo, role, role === 'worker' ? workerId : undefined);
-    }).then(() => router.push(role === 'operations' ? '/operations' : `/${role}`));
+  const t = (key: Parameters<typeof translate>[1]) => translate(state.session.locale, key);
+  useEffect(() => {
+    if (!ready || !state.session.auth) return;
+    router.replace(roleLanding(state.session.auth.role));
+  }, [ready, router, state.session.auth]);
+  const submitLogin = (event: React.SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setStatus('');
+    if (!repository) return;
+    void signInApplication(repository, { userId, password, role })
+      .then((identity) =>
+        router.replace(roleLanding(identity.role)),
+      )
+      .catch((error: Error) => setStatus(error.message))
+      .finally(() => setSubmitting(false));
   };
   return (
-    <AppShell persona="customer">
-      <section className="entry">
-        <LanguageControl />
-        <p>The cooperative belongs to workers. The dispatch rules do too.</p>
-        <h1>Book trusted cooperative services with worker-governed fair allocation.</h1>
-        <div className="persona-entry">
-          <button onClick={() => setRole('customer')} aria-pressed={role === 'customer'}>
-            <Wrench />
-            <strong>Continue as customer</strong>
-            <span>See the price, member assignment and service record</span>
-          </button>
-          <button onClick={() => setRole('worker')} aria-pressed={role === 'worker'}>
-            <Users />
-            <strong>Continue as worker</strong>
-            <span>See the scope, net pay, protection and livelihood</span>
-          </button>
-          <button onClick={() => setRole('operations')} aria-pressed={role === 'operations'}>
-            <ShieldCheck />
-            <strong>Continue as cooperative admin</strong>
-            <span>Manage records, disputes, welfare and member rules</span>
-          </button>
-        </div>
-        {role && (
-          <div className="demo-role-claim">
-            <strong>{translate(state.session.locale, 'demoAccess')}</strong>
-            {role === 'customer' && (
-              <label className="live-field"><span>Your name</span><input value={customerName} onChange={(event) => setName(event.target.value)} /></label>
-            )}
-            {role === 'worker' && (
-              <Choice label="Select your demo worker" value={workerId} values={state.workers.map((worker) => ({ value: worker.id, label: worker.name }))} onChange={setWorkerId} />
-            )}
-            <Button onClick={continueRole}>Continue</Button>
-          </div>
-        )}
-        <p className="entry-note">
-          <Link href="/demo">See judge demo</Link>
-        </p>
+    <main className="login-page">
+      <section className="login-brand" aria-labelledby="login-title">
+        <div className="login-brand-mark"><Users aria-hidden="true" /></div>
+        <p>{t('cooperativeService')}</p>
+        <h1 id="login-title">{t('loginPromise')}</h1>
+        <ul>
+          <li><ShieldCheck aria-hidden="true" /> {t('verifiedMembers')}</li>
+          <li><BriefcaseBusiness aria-hidden="true" /> {t('clearWorkRecords')}</li>
+          <li><Vote aria-hidden="true" /> {t('workerGoverned')}</li>
+        </ul>
       </section>
-    </AppShell>
+      <section className="login-panel" aria-label={t('login')}>
+        <div className="login-panel-heading">
+          <div><strong>{t('appName')}</strong><span>{t('login')}</span></div>
+          <LanguageControl />
+        </div>
+        <div className="login-roles" aria-label={t('chooseRole')}>
+          {([
+            ['customer', t('roleCustomer'), Wrench],
+            ['worker', t('roleWorker'), Users],
+            ['admin', t('roleAdmin'), ShieldCheck],
+          ] as const).map(([value, label, Icon]) => (
+            <button key={value} type="button" aria-pressed={role === value} onClick={() => setRole(value)}>
+              <Icon aria-hidden="true" /> <span>{label}</span>
+            </button>
+          ))}
+        </div>
+        <form className="login-form" onSubmit={submitLogin}>
+          <label><span>{t('userId')}</span><input autoCapitalize="none" autoComplete="username" value={userId} onChange={(event) => setUserId(event.target.value)} /></label>
+          <label><span>{t('password')}</span><input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          {status && <p className="login-error" role="alert">{status}</p>}
+          <Button type="submit" disabled={submitting || !userId || !password}>{submitting ? t('signingIn') : t('signIn')}</Button>
+        </form>
+        <div className="login-foot">
+          <span>{state.session.auth?.mode === 'supabase' ? t('secureSession') : t('offlineJudgeLogin')}</span>
+          <Link href="/demo">{t('openJudgeDemo')}</Link>
+        </div>
+      </section>
+    </main>
   );
 }
 function Heading({
@@ -319,6 +429,17 @@ function latestSnapshot(
 ) {
   return state.snapshots.find((x) => x.id === job.receiptIds.at(-1));
 }
+function plainEligibilityReason(reason: string) {
+  const value = reason.toLowerCase();
+  if (value.includes('skill')) return 'Required skill is not verified';
+  if (value.includes('activ')) return 'Membership is not currently active';
+  if (value.includes('avail')) return 'Outside the member’s available hours';
+  if (value.includes('schedule') || value.includes('overlap')) return 'Already committed at this time';
+  if (value.includes('radius') || value.includes('service area')) return 'Outside the member’s service area';
+  if (value.includes('sla') || value.includes('eta')) return 'Could not meet the promised arrival time';
+  if (value.includes('workload') || value.includes('rest')) return 'Protected by the member’s workload boundary';
+  return reason;
+}
 function SnapshotDialog({
   snapshot,
   close,
@@ -328,7 +449,7 @@ function SnapshotDialog({
   snapshot: DecisionSnapshot | null;
   close: () => void;
   challenge?: (id: string) => void;
-  audience?: 'customer' | 'audit';
+  audience?: 'customer' | 'worker' | 'audit';
 }) {
   const [raw, setRaw] = useState(false);
   if (!snapshot) return null;
@@ -353,20 +474,26 @@ function SnapshotDialog({
           {snapshot.kind === 'dispatch'
             ? audience === 'customer'
               ? 'Your assignment'
-              : 'DecisionSnapshot receipt'
+              : audience === 'worker'
+                ? 'Why this decision?'
+                : 'DecisionSnapshot receipt'
             : 'Cancellation decision'}
         </DialogTitle>
         <DialogDescription>
           {audience === 'customer'
             ? `Recorded for job ${snapshot.jobId}`
-            : `${snapshot.id} / SHA-256 ${snapshot.hash.slice(0, 16)}… / policy v${snapshot.policy.version}`}
+            : audience === 'worker'
+              ? `Job ${snapshot.jobId} / fair-work rule v${snapshot.policy.version}`
+              : `${snapshot.id} / SHA-256 ${snapshot.hash.slice(0, 16)}… / policy v${snapshot.policy.version}`}
         </DialogDescription>
         <div className="integrity-line">
           <ShieldCheck />
           <span>
             {audience === 'customer'
               ? 'The cooperative recorded this assignment when your booking was made.'
-              : `Frozen and hash-chained to ${
+              : audience === 'worker'
+                ? 'Saved at assignment time so the cooperative can check the original decision.'
+                : `Frozen and hash-chained to ${
                   snapshot.previousHash === 'GENESIS'
                     ? 'the ledger origin'
                     : snapshot.previousHash.slice(0, 12) + '…'
@@ -375,17 +502,27 @@ function SnapshotDialog({
         </div>
         {receipt && (
           <>
-            <DispatchDecisionMap
-              receipt={receipt}
-              mode={audience === 'customer' ? 'customer' : 'decision'}
-              className="receipt-map"
-            />
+            {audience !== 'worker' && (
+              <DispatchDecisionMap
+                receipt={receipt}
+                mode={audience === 'customer' ? 'customer' : 'decision'}
+                className="receipt-map"
+              />
+            )}
+            {audience === 'worker' && (
+              <div className="eligibility-checks" aria-label="Why the member was eligible">
+                <span>✓ Correct skill</span><span>✓ Available</span><span>✓ Inside service area</span><span>✓ Customer served on time</span>
+                <strong>{selected?.worker.name ?? 'No member'} received the job.</strong>
+              </div>
+            )}
             <div className="rule-explanation">
               <Scale />
               <p>
                 {audience === 'customer'
                   ? 'The assigned member has the required skill, is available, and can arrive within the service promise.'
-                  : receipt.reason}
+                  : audience === 'worker'
+                    ? 'The constitution first checked skill, active membership, availability, schedule, service area and arrival promise. It then applied the current opportunity rule to every eligible member.'
+                    : receipt.reason}
               </p>
             </div>
             <dl className="receipt-summary">
@@ -410,7 +547,7 @@ function SnapshotDialog({
                 </>
               )}
             </dl>
-            {selected && audience !== 'customer' && (
+            {selected && audience === 'audit' && (
               <p className="net-equation">
                 {money(receipt.job.payout)} payout −{' '}
                 {money(selected.costs.travel)} travel −{' '}
@@ -421,8 +558,14 @@ function SnapshotDialog({
               </p>
             )}
             {audience !== 'customer' && (
-              <>
-                <h3>Every candidate at decision time</h3>
+              <details className="advanced-receipt" open={audience === 'audit'}>
+                <summary>{audience === 'worker' ? 'Advanced decision details' : 'Every candidate at decision time'}</summary>
+                {audience === 'worker' && (
+                  <>
+                    <DispatchDecisionMap receipt={receipt} mode="decision" className="receipt-map" />
+                    {selected && <p className="net-equation">{money(receipt.job.payout)} payout − {money(selected.costs.travel)} travel − {money(selected.costs.time)} unpaid travel time − {money(selected.costs.consumables)} consumables − {money(selected.costs.cancellation)} cancellation cost = <strong>{money(selected.net)} net contribution</strong></p>}
+                  </>
+                )}
                 <div className="live-candidates">
                   {receipt.candidates.map((c) => (
                     <article
@@ -439,10 +582,10 @@ function SnapshotDialog({
                       </div>
                       <p>
                         {c.failed.length
-                          ? `Rejected: ${c.failed.join(', ')}`
+                          ? c.failed.map(plainEligibilityReason).join('. ')
                           : c.worker.id === receipt.selected
-                            ? 'Selected by the active tie-break'
-                            : `Eligible, passed over by: ${receipt.tieBreak}`}
+                            ? 'Eligible and selected under the active constitution'
+                            : 'Eligible, but another member ranked first under the active constitution'}
                       </p>
                     </article>
                   ))}
@@ -453,7 +596,15 @@ function SnapshotDialog({
                   service minute offset from 31 August 2026 00:00 India
                   Standard Time.
                 </p>
-              </>
+                {audience === 'worker' && (
+                  <>
+                    <button className="text-link" onClick={() => setRaw((value) => !value)}>
+                      {raw ? 'Hide' : 'Inspect'} frozen JSON
+                    </button>
+                    {raw && <pre>{JSON.stringify(auditable, null, 2)}</pre>}
+                  </>
+                )}
+              </details>
             )}
           </>
         )}
@@ -485,7 +636,7 @@ function SnapshotDialog({
             </div>
           </dl>
         )}
-        {audience !== 'customer' && (
+        {audience === 'audit' && (
           <>
             <button className="text-link" onClick={() => setRaw((v) => !v)}>
               {raw ? 'Hide' : 'Inspect'} frozen JSON
@@ -532,6 +683,13 @@ function PriceRegister({ service }: { service: Service }) {
     </div>
   );
 }
+function ServiceIcon({ service }: { service: Service }) {
+  if (service === 'Plumber') return <Droplets aria-hidden="true" />;
+  if (service === 'Home cleaning') return <SprayCan aria-hidden="true" />;
+  if (service === 'Appliance repair') return <Refrigerator aria-hidden="true" />;
+  if (service === 'Caregiving') return <HeartHandshake aria-hidden="true" />;
+  return <Wrench aria-hidden="true" />;
+}
 
 type IntakeSuggestion = {
   suggestedServiceCategory: string;
@@ -560,9 +718,18 @@ function localIntake(description: string): IntakeSuggestion {
   };
 }
 
-export function CustomerApplication() {
+export function CustomerApplication({
+  section = 'home',
+}: {
+  section?: 'home' | 'bookings' | 'past' | 'profile';
+}) {
   const { state, run, ready } = useApplication();
-  const [service, setService] = useState<Service>('Electrician'),
+  const requestedService = useSearchParams().get('service');
+  const [service, setService] = useState<Service>(
+      requestedService && services.includes(requestedService as Service)
+        ? (requestedService as Service)
+        : 'Electrician',
+    ),
     [zone, setZone] = useState('Kharadi'),
     [time, setTime] = useState('11:30'),
     [requirement, setRequirement] = useState(
@@ -572,8 +739,28 @@ export function CustomerApplication() {
     [receipt, setReceipt] = useState<DecisionSnapshot | null>(null),
     [intake, setIntake] = useState<IntakeSuggestion | null>(null),
     [intakeStatus, setIntakeStatus] = useState(''),
-    [reference, setReference] = useState<Awaited<ReturnType<typeof compressEvidence>> | null>(null);
+    [reference, setReference] = useState<Awaited<ReturnType<typeof compressEvidence>> | null>(null),
+    [bookingStep, setBookingStep] = useState(
+      requestedService && services.includes(requestedService as Service) ? 2 : 1,
+    ),
+    [issueJobId, setIssueJobId] = useState<string | null>(null),
+    [issueType, setIssueType] = useState<IssueType>('quality'),
+    [issueDescription, setIssueDescription] = useState(''),
+    [issueStatus, setIssueStatus] = useState('');
+  const router = useRouter();
   const t = (key: Parameters<typeof translate>[1]) => translate(state.session.locale, key);
+  const activeJobs = state.jobs.filter(
+    (job) => !['completed', 'cancelled'].includes(job.stage),
+  );
+  const pastJobs = state.jobs
+    .filter((job) => ['completed', 'cancelled'].includes(job.stage))
+    .toReversed();
+  const visibleJobs =
+    section === 'past'
+      ? pastJobs
+      : section === 'home'
+        ? activeJobs.slice(-1)
+        : activeJobs;
   const submit = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     void run(async (repo) => {
@@ -590,12 +777,15 @@ export function CustomerApplication() {
         jobId, type: 'customer-reference', caption: 'Customer reference photo',
         ...reference, uploader: { role: 'customer', id: 'CUSTOMER-01' },
       });
+    }).then(() => {
+      setBookingStep(1);
+      router.push('/customer/bookings');
     });
   };
   const askIntake = async () => {
     setIntakeStatus('Structuring your service request…');
     try {
-      const response = await fetch('/api/intake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: requirement }) });
+      const response = await fetch('/api/ai/intake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: requirement }) });
       if (!response.ok) throw new Error('fallback');
       setIntake(await response.json() as IntakeSuggestion);
       setIntakeStatus('AI suggestion ready. Review it before applying.');
@@ -607,115 +797,154 @@ export function CustomerApplication() {
   return (
     <AppShell persona="customer">
       <Heading
-        title={translate(state.session.locale, 'bookHelp')}
-        text={t('bookingSub')}
+        title={
+          section === 'home'
+            ? `${t('greeting')}, ${state.session.customerName}`
+            : section === 'bookings'
+              ? t('bookService')
+              : section === 'past'
+                ? t('pastOrders')
+                : t('profile')
+        }
+        text={
+          section === 'home'
+            ? 'Kharadi, Pune'
+            : section === 'bookings'
+              ? t('bookServiceHelp')
+              : section === 'past'
+                ? t('pastOrdersHelp')
+                : t('profileHelp')
+        }
       />
-      <div className="customer-live-grid">
+      {section === 'home' && (
+        <section className="customer-home-services">
+          <div className="section-heading">
+            <div><h2>{t('bookHelp')}</h2><p>{t('chooseService')}</p></div>
+          </div>
+          <div className="service-choice-grid">
+            {services.map((item) => (
+              <Link key={item} href={`/customer/bookings?service=${encodeURIComponent(item)}`}>
+                <span><ServiceIcon service={item} /></span>
+                <strong>{serviceLabel(state.session.locale, item)}</strong>
+                <small>{money(priceBands[item].customerTotal)}</small>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+      {section === 'profile' && (
+        <section className="customer-profile live-panel">
+          <div className="profile-line"><UserRound aria-hidden="true" /><div><strong>{state.session.customerName}</strong><span>{state.session.auth?.userId}</span></div></div>
+          <label className="live-field"><span>Your name</span><input defaultValue={state.session.customerName} onBlur={(event) => void run((repo) => setCustomerName(repo, event.target.value.trim() || state.session.customerName))} /></label>
+          <div><strong>{t('language')}</strong><LanguageControl /></div>
+          <div className="profile-location"><MapPin aria-hidden="true" /><span>Kharadi, Pune</span></div>
+        </section>
+      )}
+      {section !== 'profile' && (
+      <div className={`customer-live-grid ${section !== 'bookings' ? 'single' : ''}`}>
+        {section === 'bookings' && (
         <section className="live-panel">
           <h2>{t('newRequest')}</h2>
           <form onSubmit={submit} className="live-form">
-            <Choice
-              label={t('service')}
-              value={service}
-              values={services.map((x) => ({ value: x, label: serviceLabel(state.session.locale, x) }))}
-              onChange={(v) => setService(v as Service)}
-            />
-            <div className="live-form-pair">
-              <Choice
-                label={t('locality')}
-                value={zone}
-                values={zones.map((x) => ({ value: x, label: x }))}
-                onChange={setZone}
-              />
-              <Choice
-                label={t('schedule')}
-                value={time}
-                values={['09:00', '11:30', '14:00', '16:30'].map((x) => ({
-                  value: x,
-                  label: x,
-                }))}
-                onChange={setTime}
-              />
+            <div className="booking-progress" aria-label={`Step ${bookingStep} of 5`}>
+              <span>Step {bookingStep} of 5</span>
+              <progress max="5" value={bookingStep} />
             </div>
-            <label className="live-field">
-              <span>{t('describe')}</span>
-              <textarea
-                required
-                maxLength={250}
-                value={requirement}
-                onChange={(e) => setRequirement(e.target.value)}
-              />
-            </label>
-            <div className="intake-assistant">
-              <div><strong>Describe it with help</strong><span>AI structures your words; you decide what enters the booking.</span></div>
-              <Button type="button" variant="outline" onClick={() => void askIntake()}>{t('aiHelp')}</Button>
-              {intakeStatus && <output>{intakeStatus}</output>}
-              {intake && (
-                <div className="intake-result">
-                  <strong>{intake.suggestedTask}</strong>
-                  <p>{intake.issueSummary}</p>
-                  <ul>{intake.clarifyingQuestions.map((question) => <li key={question}>{question}</li>)}</ul>
-                  <small>{intake.uncertaintyNote}</small>
-                  <div className="button-row">
-                    <Button type="button" onClick={() => {
-                      if (services.includes(intake.suggestedServiceCategory as Service)) setService(intake.suggestedServiceCategory as Service);
-                      setRequirement(`${intake.suggestedTask}: ${intake.issueSummary}`);
-                      setEmergency(intake.possibleUrgency === 'urgent');
-                      setIntake(null);
-                    }}>Use this editable draft</Button>
-                    <Button type="button" variant="outline" onClick={() => setIntake(null)}>Keep my description</Button>
-                  </div>
+            {bookingStep === 1 && (
+              <fieldset className="booking-step">
+                <legend>{t('service')}</legend>
+                <div className="service-choice-grid compact">
+                  {services.map((item) => (
+                    <button key={item} type="button" aria-pressed={service === item} onClick={() => setService(item)}>
+                      <span><ServiceIcon service={item} /></span>
+                      <strong>{serviceLabel(state.session.locale, item)}</strong>
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
-            <label className="evidence-picker">
-              <Camera aria-hidden="true" />
-              <span><strong>{t('referencePhoto')}</strong><small>Optional. Compressed on this device.</small></span>
-              <input type="file" accept="image/*" onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void compressEvidence(file).then(setReference).catch((error: Error) => setIntakeStatus(error.message));
-              }} />
-            </label>
-            {reference && <><span className="sr-only">Customer reference preview</span><div className="evidence-preview" style={{ backgroundImage: `url(${reference.dataUrl})` }} /></>}
-            <label className="emergency-choice">
-              <input
-                type="checkbox"
-                checked={emergency}
-                onChange={(event) => setEmergency(event.target.checked)}
-              />
-              <span>
-                {t('emergency')}
-                <small>
-                  Uses the same hard skill, radius and safety checks.
-                </small>
-              </span>
-            </label>
-            <PriceRegister service={service} />
-            <p className="fairness-disclosure">
-              Skill, availability and the promised arrival time are checked
-              before the cooperative applies its member-approved assignment
-              rule.
-            </p>
-            <Button type="submit" disabled={!ready}>
-              {translate(state.session.locale, 'createJob')}
-            </Button>
+                <Button type="button" onClick={() => setBookingStep(2)}>Continue</Button>
+              </fieldset>
+            )}
+            {bookingStep === 2 && (
+              <fieldset className="booking-step">
+                <legend>What needs fixing?</legend>
+                <label className="live-field">
+                  <span>{t('describe')}</span>
+                  <textarea required maxLength={250} value={requirement} onChange={(e) => setRequirement(e.target.value)} />
+                </label>
+                <div className="intake-assistant">
+                  <div><strong>Describe it with help</strong><span>You decide what enters the booking.</span></div>
+                  <Button type="button" variant="outline" onClick={() => void askIntake()}>{t('aiHelp')}</Button>
+                  {intakeStatus && <output>{intakeStatus}</output>}
+                  {intake && (
+                    <div className="intake-result">
+                      <strong>{intake.suggestedTask}</strong>
+                      <p>{intake.issueSummary}</p>
+                      <ul>{intake.clarifyingQuestions.map((question) => <li key={question}>{question}</li>)}</ul>
+                      <small>{intake.uncertaintyNote}</small>
+                      <div className="button-row">
+                        <Button type="button" onClick={() => {
+                          if (services.includes(intake.suggestedServiceCategory as Service)) setService(intake.suggestedServiceCategory as Service);
+                          setRequirement(`${intake.suggestedTask}: ${intake.issueSummary}`);
+                          setEmergency(intake.possibleUrgency === 'urgent');
+                          setIntake(null);
+                        }}>Use suggestion</Button>
+                        <Button type="button" variant="outline" onClick={() => setIntake(null)}>Ignore</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <label className="evidence-picker">
+                  <Camera aria-hidden="true" />
+                  <span><strong>{t('referencePhoto')}</strong><small>Optional. Compressed on this device.</small></span>
+                  <input type="file" accept="image/*" onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void compressEvidence(file).then(setReference).catch((error: Error) => setIntakeStatus(error.message));
+                  }} />
+                </label>
+                {reference && <><span className="sr-only">Customer reference preview</span><div className="evidence-preview" style={{ backgroundImage: `url(${reference.dataUrl})` }} /></>}
+                <div className="booking-actions"><Button type="button" variant="outline" onClick={() => setBookingStep(1)}>Back</Button><Button type="button" onClick={() => setBookingStep(3)} disabled={requirement.trim().length < 5}>Continue</Button></div>
+              </fieldset>
+            )}
+            {bookingStep === 3 && (
+              <fieldset className="booking-step">
+                <legend>{t('locality')}</legend>
+                <Choice label={t('locality')} value={zone} values={zones.map((x) => ({ value: x, label: x }))} onChange={setZone} />
+                <div className="booking-actions"><Button type="button" variant="outline" onClick={() => setBookingStep(2)}>Back</Button><Button type="button" onClick={() => setBookingStep(4)}>Continue</Button></div>
+              </fieldset>
+            )}
+            {bookingStep === 4 && (
+              <fieldset className="booking-step">
+                <legend>When should we come?</legend>
+                <Choice label={t('schedule')} value={time} values={['09:00', '11:30', '14:00', '16:30'].map((x) => ({ value: x, label: x }))} onChange={setTime} />
+                <label className="emergency-choice"><input type="checkbox" checked={emergency} onChange={(event) => setEmergency(event.target.checked)} /><span>{t('emergency')}<small>Use this only when the service cannot safely wait.</small></span></label>
+                <div className="booking-actions"><Button type="button" variant="outline" onClick={() => setBookingStep(3)}>Back</Button><Button type="button" onClick={() => setBookingStep(5)}>Review booking</Button></div>
+              </fieldset>
+            )}
+            {bookingStep === 5 && (
+              <fieldset className="booking-step review-step">
+                <legend>Review</legend>
+                <dl className="booking-review"><div><dt>Service</dt><dd>{serviceLabel(state.session.locale, service)}</dd></div><div><dt>Need</dt><dd>{requirement}</dd></div><div><dt>Location</dt><dd>{zone}</dd></div><div><dt>Time</dt><dd>{time}</dd></div></dl>
+                <PriceRegister service={service} />
+                <p className="fairness-disclosure">Skill, availability and promised arrival are checked before assignment.</p>
+                <div className="booking-actions"><Button type="button" variant="outline" onClick={() => setBookingStep(4)}>Back</Button><Button type="submit" disabled={!ready}>{translate(state.session.locale, 'createJob')}</Button></div>
+              </fieldset>
+            )}
           </form>
         </section>
+        )}
         <section className="live-queue">
           <h2>
-            {t('jobRecords')} <span>{state.jobs.length}</span>
+            {section === 'past' ? t('pastOrders') : section === 'home' ? t('activeBooking') : t('bookings')} <span>{visibleJobs.length}</span>
           </h2>
-          {!state.jobs.length && (
+          {!visibleJobs.length && (
             <div className="empty-state">
               <Clock />
-              <h3>No local jobs yet</h3>
-              <p>
-                The first booking creates a persisted job, event and dispatch
-                snapshot.
-              </p>
+              <h3>{section === 'past' ? 'No past orders yet' : t('noActiveBooking')}</h3>
+              <p>{section === 'past' ? 'Completed services will appear here.' : 'Choose a service when you need help.'}</p>
+              {section !== 'past' && <Link className="button-link" href="/customer/bookings">{t('bookService')}</Link>}
             </div>
           )}
-          {state.jobs.map((job) => {
+          {visibleJobs.map((job) => {
             const snap = latestSnapshot(state, job);
             const pendingChange = state.changeOrders.find(
               (change) =>
@@ -890,17 +1119,45 @@ export function CustomerApplication() {
                       {t('cancelJob')}
                     </Button>
                   )}
+                  {section === 'past' && ['completed', 'cancelled'].includes(job.stage) && (
+                    <>
+                      <Button variant="outline" onClick={() => setIssueJobId(job.id)}>Report a problem</Button>
+                      <Link className="text-link" href={`/customer/bookings?service=${encodeURIComponent(job.job.category)}`}>Book again</Link>
+                    </>
+                  )}
                 </div>
+                {state.issues.filter((issue) => issue.jobId === job.id && issue.raisedBy.role === 'customer').map((issue) => (
+                  <p className="issue-status-line" key={issue.id}><strong>Issue {issue.status.replaceAll('-', ' ')}</strong><span>{issue.description}</span></p>
+                ))}
               </article>
             );
           })}
         </section>
       </div>
+      )}
       <SnapshotDialog
         snapshot={receipt}
         close={() => setReceipt(null)}
         audience="customer"
       />
+      <Dialog open={!!issueJobId} onOpenChange={(open) => !open && setIssueJobId(null)}>
+        <DialogContent className="issue-dialog">
+          <DialogTitle>Report a problem</DialogTitle>
+          <DialogDescription>Tell the cooperative what happened. This does not automatically penalize the worker.</DialogDescription>
+          <Choice label="Problem type" value={issueType} values={[
+            { value: 'work-incomplete', label: 'Work incomplete' }, { value: 'quality', label: 'Quality issue' }, { value: 'payment', label: 'Payment issue' }, { value: 'worker-no-show', label: 'Worker did not arrive' }, { value: 'wrong-scope', label: 'Wrong scope' }, { value: 'other', label: 'Other' },
+          ]} onChange={(value) => setIssueType(value as IssueType)} />
+          <label className="live-field"><span>What happened?</span><textarea value={issueDescription} onChange={(event) => setIssueDescription(event.target.value)} /></label>
+          {issueStatus && <output>{issueStatus}</output>}
+          <Button disabled={issueDescription.trim().length < 8} onClick={() => {
+            if (!issueJobId) return;
+            void run((repo) => raiseIssue(repo, { actor: { role: 'customer', id: 'CUSTOMER-01' }, jobId: issueJobId, issueType, description: issueDescription })).then(() => {
+              setIssueStatus('Issue received. The cooperative and worker have been notified.');
+              setIssueDescription('');
+            });
+          }}>Submit issue</Button>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
@@ -1051,7 +1308,11 @@ function WorkloadPanel({ profile }: { profile: MemberProfile }) {
   );
 }
 
-export function WorkerApplication() {
+export function WorkerApplication({
+  section = 'home',
+}: {
+  section?: 'home' | 'current' | 'fair-work' | 'issues' | 'more';
+}) {
   const { state, run, ready } = useApplication();
   const memberId = state.session.memberId,
     member = state.workers.find((w) => w.id === memberId)!,
@@ -1080,11 +1341,20 @@ export function WorkerApplication() {
     [otpCode, setOtpCode] = useState(''),
     [proofType, setProofType] = useState<'before' | 'during' | 'after' | 'variance'>('before'),
     [proofStatus, setProofStatus] = useState(''),
+    [issueType, setIssueType] = useState<IssueType>('unsafe-workplace'),
+    [issueDescription, setIssueDescription] = useState(''),
+    [issueStatus, setIssueStatus] = useState(''),
+    [issueResponses, setIssueResponses] = useState<Record<string, string>>({}),
+    [voteReason, setVoteReason] = useState(''),
     [guideDismissed, setGuideDismissed] = useState(false),
     [guideForced, setGuideForced] = useState(false);
   const showGuide = guideForced || (ready && !state.session.onboardingDone[memberId] && !guideDismissed);
   const t = (key: Parameters<typeof translate>[1]) => translate(state.session.locale, key);
   const mine = state.jobs.filter((j) => j.workerId === memberId),
+    activeMine = mine.filter(
+      (job) => !['completed', 'cancelled'].includes(job.stage),
+    ),
+    workerJobs = section === 'home' ? activeMine.slice(-1) : activeMine,
     skipped = state.jobs.filter(
       (j) =>
         j.workerId !== memberId &&
@@ -1118,26 +1388,23 @@ export function WorkerApplication() {
       <Heading
         title={`${member.name} ${t('workerWork')}`}
         text={t('workerSub')}
-        action={
-          <Choice
-            label={t('actingWorker')}
-            value={memberId}
-            values={state.workers.map((w) => ({ value: w.id, label: w.name }))}
-            onChange={(id) =>
-              void run((repo) => switchPersona(repo, 'worker', id))
-            }
-          />
-        }
       />
+      <div className={`worker-section worker-section-${section}`}>
+      <section className="worker-home-summary" aria-label="Today at a glance">
+        <div><span>{t('availability')}</span><strong>{profile.availability}</strong></div>
+        <div><span>{t('nextJob')}</span><strong>{activeMine[0] ? serviceLabel(state.session.locale, activeMine[0].job.category) : t('noActiveOffer')}</strong></div>
+        <div><span>{t('settledEarnings')}</span><strong>{money(funds.total)}</strong></div>
+        <div><span>{t('todaysWorkload')}</span><strong>{activeMine.length}/{profile.workload.maximumJobsToday} jobs</strong><progress max={Math.max(profile.workload.maximumJobsToday, 1)} value={activeMine.length} /></div>
+      </section>
       <div className="worker-live-grid">
         <section>
           <h2 id="worker-jobs">
-            {t('liveWork')} <span className="count">{mine.length}</span>
+            {t('liveWork')} <span className="count">{workerJobs.length}</span>
           </h2>
-          {!mine.length && (
+          {!workerJobs.length && (
             <div className="empty-state">{t('noOffers')}</div>
           )}
-          {mine.map((job) => {
+          {workerJobs.map((job) => {
             const action = nextAction[job.stage];
             const snap = latestSnapshot(state, job);
             const candidate = snap?.receipt?.candidates.find(
@@ -1508,34 +1775,125 @@ export function WorkerApplication() {
             <summary>{t('challenges')}</summary>
             {state.challenges.filter((item) => item.openedBy.id === memberId).map((item) => <p key={item.id}><strong>{item.status}</strong> / {item.reason}</p>)}
             {!state.challenges.some((item) => item.openedBy.id === memberId) && <p>You haven’t challenged any decisions.</p>}
+            <label className="challenge-reason">
+              <span>What should the cooperative check when you challenge a decision?</span>
+              <input value={reason} onChange={(event) => setReason(event.target.value)} />
+            </label>
           </details>
           <details>
             <summary>{t('votes')}</summary>
-            <p>{state.proposalVersion ? `Constitution v${state.proposalVersion} is open in cooperative governance.` : 'No member vote is open.'}</p>
-            <Link className="text-link" href="/governance">See what the rule would change</Link>
+            {state.proposalVersion ? (() => {
+              const proposal = state.policies.find(
+                (policy) => policy.version === state.proposalVersion,
+              )!;
+              const consultation = proposal.consultations[memberId];
+              const ballot = proposal.votes[memberId];
+              const current = projection(state).workers.find(
+                (item) => item.id === memberId,
+              )!;
+              const proposed = projection(state, proposal.version).workers.find(
+                (item) => item.id === memberId,
+              )!;
+              return (
+                <div className="worker-ballot">
+                  <p>
+                    Constitution v{proposal.version} is {proposal.status}.
+                    Review what it changes for your work before voting.
+                  </p>
+                  <dl className="receipt-summary">
+                    <div><dt>Current rule</dt><dd>{money(current.net)} / {current.jobs} jobs</dd></div>
+                    <div><dt>Proposed rule</dt><dd>{money(proposed.net)} / {proposed.jobs} jobs</dd></div>
+                  </dl>
+                  {!consultation && proposal.status === 'voting' && (
+                    <Button variant="outline" onClick={() => void run((repo) => recordPolicyImpactView(repo, memberId))}>
+                      I reviewed my impact
+                    </Button>
+                  )}
+                  {consultation && !ballot && proposal.status === 'voting' && (
+                    <>
+                      <label className="live-field">
+                        <span>Reason if opposing</span>
+                        <textarea value={voteReason} onChange={(event) => setVoteReason(event.target.value)} />
+                      </label>
+                      <div className="button-row">
+                        <Button onClick={() => void run((repo) => castPolicyVote(repo, memberId, 'support'))}>Support</Button>
+                        <Button variant="outline" disabled={!voteReason.trim()} onClick={() => void run((repo) => castPolicyVote(repo, memberId, 'oppose', voteReason))}>Oppose</Button>
+                      </div>
+                    </>
+                  )}
+                  {ballot && (
+                    <p className="protection-note">
+                      Your vote: <strong>{ballot.choice}</strong>
+                      {ballot.reason ? ` — ${ballot.reason}` : ''}
+                    </p>
+                  )}
+                </div>
+              );
+            })() : <p>No member vote is open.</p>}
           </details>
+        </div>
+      </section>
+      <section className="worker-issues-hub live-panel">
+        <div className="section-heading">
+          <div><h2>{t('issuesSuggestions')}</h2><p>{t('issueHelp')}</p></div>
+          <CircleAlert aria-hidden="true" />
+        </div>
+        <Choice label="Type" value={issueType} values={[
+          { value: 'unsafe-workplace', label: 'Safety concern' },
+          { value: 'payment', label: 'Payment issue' },
+          { value: 'work-incomplete', label: 'Job or scope issue' },
+          { value: 'policy-suggestion', label: 'Policy suggestion' },
+          { value: 'other', label: 'Other' },
+        ]} onChange={(value) => setIssueType(value as IssueType)} />
+        <label className="live-field">
+          <span>{issueType === 'policy-suggestion' ? 'What rule should members discuss?' : 'What happened?'}</span>
+          <textarea value={issueDescription} onChange={(event) => setIssueDescription(event.target.value)} />
+        </label>
+        {issueStatus && <output>{issueStatus}</output>}
+        <Button disabled={issueDescription.trim().length < 8} onClick={() => void run((repo) => raiseIssue(repo, {
+          actor: { role: 'worker', id: memberId },
+          jobId: activeMine[0]?.id ?? null,
+          issueType,
+          description: issueDescription,
+        })).then(() => {
+          setIssueStatus('Sent to cooperative operations.');
+          setIssueDescription('');
+        })}>
+          Submit
+        </Button>
+        <div className="issue-list">
+          {state.issues
+            .filter((item) =>
+              (item.raisedBy.role === 'worker' && item.raisedBy.id === memberId) ||
+              (item.raisedBy.role === 'customer' && !!item.jobId && state.jobs.some((job) => job.id === item.jobId && job.workerId === memberId)),
+            )
+            .toReversed()
+            .map((item) => (
+              <article key={item.id}>
+                <div><strong>{item.issueType.replaceAll('-', ' ')}</strong><span className="stage">{item.status.replaceAll('-', ' ')}</span></div>
+                <p>{item.description}</p>
+                {item.comments.map((comment) => <small key={comment.id}>{comment.author.role}: {comment.message}</small>)}
+                {item.raisedBy.role === 'customer' && (
+                  <div className="issue-response-box">
+                    <label className="live-field"><span>Add your response</span><textarea value={issueResponses[item.id] ?? ''} onChange={(event) => setIssueResponses((current) => ({ ...current, [item.id]: event.target.value }))} /></label>
+                    <Button variant="outline" disabled={(issueResponses[item.id] ?? '').trim().length < 3} onClick={() => void run((repo) => addIssueResponse(repo, item.id, { role: 'worker', id: memberId }, issueResponses[item.id])).then(() => setIssueResponses((current) => ({ ...current, [item.id]: '' })))}>Send response</Button>
+                  </div>
+                )}
+              </article>
+            ))}
         </div>
       </section>
       <div id="worker-more">
         <WorkloadPanel key={memberId} profile={profile} />
         <Button variant="outline" onClick={() => setGuideForced(true)}>{t('howItWorks')}</Button>
       </div>
-      <label className="challenge-reason">
-        <span>Reason used when challenging a receipt</span>
-        <input value={reason} onChange={(e) => setReason(e.target.value)} />
-      </label>
+      </div>
       <SnapshotDialog
         snapshot={receipt}
         close={() => setReceipt(null)}
         challenge={challengeSnap}
+        audience="worker"
       />
-      <nav className="worker-bottom-nav" aria-label="Worker app">
-        <a href="#workspace"><Home aria-hidden="true" /><span>{t('today')}</span></a>
-        <a href="#worker-jobs"><ListChecks aria-hidden="true" /><span>{t('jobs')}</span></a>
-        <a href="#worker-fair-work"><Scale aria-hidden="true" /><span>{t('fairWork')}</span></a>
-        <a href="#worker-earnings"><IndianRupee aria-hidden="true" /><span>{t('earnings')}</span></a>
-        <a href="#worker-more"><Menu aria-hidden="true" /><span>{t('more')}</span></a>
-      </nav>
     </AppShell>
   );
 }
@@ -2164,10 +2522,63 @@ function Court({ item }: { item: CourtCase }) {
     </article>
   );
 }
+function OperationsIssues() {
+  const { state, run } = useApplication();
+  const [responses, setResponses] = useState<Record<string, string>>({});
+  const statuses: IssueStatus[] = [
+    'open',
+    'under-review',
+    'waiting-for-response',
+    'resolved',
+    'closed',
+  ];
+  return (
+    <section className="admin-issues">
+      <div className="section-heading">
+        <div><h2>Issue register</h2><p>Service, member and policy concerns with an accountable response trail.</p></div>
+        <strong>{state.issues.filter((item) => !['resolved', 'closed'].includes(item.status)).length} open</strong>
+      </div>
+      {!state.issues.length && <div className="empty-state"><CircleAlert aria-hidden="true" /><p>No issues have been raised.</p></div>}
+      {state.issues.toReversed().map((item) => (
+        <article className="admin-issue-row" key={item.id}>
+          <div className="admin-issue-heading">
+            <div><strong>{item.issueType.replaceAll('-', ' ')}</strong><span>{item.id} / {item.raisedBy.role} {item.raisedBy.id}{item.jobId ? ` / ${item.jobId}` : ''}</span></div>
+            <Choice label="Status" value={item.status} values={statuses.map((status) => ({ value: status, label: status.replaceAll('-', ' ') }))} onChange={(status) => void run((repo) => updateIssueStatus(repo, item.id, status as IssueStatus))} />
+          </div>
+          <p>{item.description}</p>
+          <div className="issue-comments">
+            {item.comments.map((comment) => <p key={comment.id}><strong>{comment.author.role}</strong> {comment.message}</p>)}
+          </div>
+          <label className="live-field"><span>Add response</span><textarea value={responses[item.id] ?? ''} onChange={(event) => setResponses((current) => ({ ...current, [item.id]: event.target.value }))} /></label>
+          <Button
+            variant="outline"
+            disabled={(responses[item.id] ?? '').trim().length < 3}
+            onClick={() => {
+              void run((repo) =>
+                addIssueResponse(
+                  repo,
+                  item.id,
+                  { role: 'operations', id: state.session.auth?.userId ?? 'admin01' },
+                  responses[item.id],
+                ),
+              ).then(() =>
+                setResponses((current) => ({ ...current, [item.id]: '' })),
+              );
+            }}
+          >
+            Add response
+          </Button>
+        </article>
+      ))}
+    </section>
+  );
+}
 export function OperationsApplication({
   governance = false,
+  section = 'overview',
 }: {
   governance?: boolean;
+  section?: 'overview' | 'jobs' | 'workers' | 'issues' | 'settlements' | 'demand';
 }) {
   const { state, reset } = useApplication();
   const router = useRouter();
@@ -2199,12 +2610,26 @@ export function OperationsApplication({
     <AppShell persona="operations">
       <Heading
         title={
-          governance ? 'Cooperative constitution' : 'Cooperative operations'
+          governance
+            ? 'Cooperative constitution'
+            : section === 'jobs'
+              ? 'Jobs and events'
+              : section === 'workers'
+                ? 'Worker-members'
+                : section === 'settlements'
+                  ? 'Settlements'
+                  : section === 'demand'
+                    ? 'Demand outlook'
+                    : section === 'issues'
+                      ? 'Issues and challenges'
+                      : 'Cooperative operations'
         }
         text={
           governance
             ? 'Members test and decide the rules that allocate work.'
-            : 'Every counter comes from this device-local event envelope.'
+            : section === 'overview'
+              ? 'Every counter comes from this device-local event envelope.'
+              : 'A focused register from the same cooperative records.'
         }
         action={
           <div className="ops-tabs">
@@ -2223,7 +2648,9 @@ export function OperationsApplication({
           </div>
         }
       />
-      {governance ? (
+      {section === 'issues' ? (
+        <OperationsIssues />
+      ) : governance ? (
         <GovernancePanel />
       ) : (
         <>
@@ -2280,7 +2707,7 @@ export function OperationsApplication({
             </section>
           </div>
           <div className="operations-registers">
-            <section className="ops-register">
+            <section className="ops-register member-register">
               <div className="section-heading">
                 <div>
                   <h2>Member register</h2>
@@ -2306,7 +2733,7 @@ export function OperationsApplication({
                 );
               })}
             </section>
-            <section className="ops-register">
+            <section className="ops-register demand-register">
               <div className="section-heading">
                 <div>
                   <h2>Demand outlook</h2>

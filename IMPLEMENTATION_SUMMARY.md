@@ -1,5 +1,17 @@
 # KAAMSABHA — what we built, how it works, and why it helps
 
+## Final role and accessibility pass
+
+The normal application now starts with User ID and password login. Customers, individual worker-members and cooperative administrators receive separate route groups and navigation; direct cross-role URLs redirect to the signed-in role. A configured installation uses Supabase Auth through private internal email identities, while the explicit offline judge mode validates deterministic accounts against PBKDF2 proofs. Passwords are never stored in application state or shown after login.
+
+Customer work is service-first: a short home, five real booking steps, one active booking, a dedicated Past Orders page, and customer issue reporting. The customer assignment view shows one worker and one service promise instead of the candidate register. Maps, route geometry, OTPs, change orders, proof and settlements remain intact.
+
+Worker work is task-first: Home, Current Job, Fair Work, Issues and More. Each login maps to one seeded member, so Ravi cannot switch to Meena inside the app. The first receipt view uses simple eligibility checks; candidate calculations, maps, hashes and JSON remain available under Advanced decision details. Workers can see and respond to customer issues, raise their own safety/payment/scope concerns, suggest a rule change, review their policy impact and vote from their own account.
+
+Operations now has grouped navigation for overview, jobs, workers, issues and challenges, governance, settlements and demand. The shared issue register preserves comments and status changes and never creates an automatic worker penalty.
+
+OpenRouter intake runs only through `/api/ai/intake` with fixed instructions, output validation, timeout and safe error handling. Missing, malformed, rate-limited and failed provider responses keep manual booking available. The secret stays server-side.
+
 ## What KAAMSABHA is
 
 KAAMSABHA is a worker-owned household-services cooperative application with a reliable device-local demonstration mode and a committed Supabase production schema. Customers, worker-members, and cooperative operations use one shared state model while the original deterministic presentation remains isolated at `/demo`.

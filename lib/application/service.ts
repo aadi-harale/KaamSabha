@@ -45,10 +45,14 @@ import {
   type WorkOrder,
   type JobEvidence,
   type OtpType,
+  type AppRole,
+  type IssueType,
+  type IssueStatus,
 } from './model';
 import type { ApplicationRepository, UnitOfWork } from './repositories';
 import { presentReceiptMap } from '../map';
 import { fetchRoute } from './route-service';
+import { authenticateUser, endAuthenticatedSession } from './auth';
 
 export type NewBooking = {
   service: Job['category'];
@@ -959,6 +963,41 @@ export const switchPersona = (
       memberId: memberId ?? u.state.session.memberId,
     };
   });
+export async function signInApplication(
+  repo: ApplicationRepository,
+  credentials: { userId: string; password: string; role: AppRole },
+) {
+  const identity = await authenticateUser(
+    credentials.userId,
+    credentials.password,
+    credentials.role,
+  );
+  await repo.transaction((u) => {
+    if (
+      identity.memberId &&
+      !u.state.workers.some((worker) => worker.id === identity.memberId)
+    )
+      throw new Error('The worker-member account is not part of this cooperative.');
+    u.state.session.auth = {
+      userId: identity.userId,
+      role: identity.role,
+      mode: identity.mode,
+      authenticatedAt: now(),
+    };
+    u.state.session.persona =
+      identity.role === 'admin' ? 'operations' : identity.role;
+    if (identity.memberId) u.state.session.memberId = identity.memberId;
+    if (identity.customerName)
+      u.state.session.customerName = identity.customerName;
+  });
+  return identity;
+}
+export async function signOutApplication(repo: ApplicationRepository) {
+  await endAuthenticatedSession();
+  await repo.transaction((u) => {
+    u.state.session.auth = null;
+  });
+}
 export const setLocale = (
   repo: ApplicationRepository,
   locale: 'en' | 'hi' | 'mr',
@@ -993,6 +1032,124 @@ export const markNotificationsRead = (
       item.readAt = now();
       u.notifications.put(item);
     }
+  });
+export const raiseIssue = (
+  repo: ApplicationRepository,
+  input: {
+    actor: Actor;
+    jobId?: string | null;
+    issueType: IssueType;
+    description: string;
+  },
+) =>
+  repo.transaction((u) => {
+    const description = input.description.trim();
+    if (description.length < 8)
+      throw new Error('Describe what happened in a little more detail.');
+    const job = input.jobId ? u.jobs.get(input.jobId) : null;
+    if (
+      input.actor.role === 'worker' &&
+      job &&
+      job.workerId !== input.actor.id
+    )
+      throw new Error('You can report an issue only for your own job.');
+    const category =
+      input.issueType === 'policy-suggestion'
+        ? 'policy'
+        : input.issueType === 'payment'
+          ? 'payment'
+          : input.issueType === 'wrong-scope' ||
+              input.issueType === 'unpaid-extra-work'
+            ? 'scope'
+            : input.issueType === 'unsafe-workplace'
+              ? 'safety'
+              : ['work-incomplete', 'quality', 'worker-no-show'].includes(
+                    input.issueType,
+                  )
+                ? 'service'
+                : 'other';
+    const at = now();
+    const value = {
+      id: id(u, 'ISS'),
+      jobId: job?.id ?? null,
+      raisedBy: input.actor,
+      issueType: input.issueType,
+      category: category as
+        | 'service'
+        | 'scope'
+        | 'payment'
+        | 'safety'
+        | 'policy'
+        | 'other',
+      description,
+      status: 'open' as const,
+      assignedAdminId: null,
+      comments: [],
+      createdAt: at,
+      updatedAt: at,
+      resolvedAt: null,
+    };
+    u.issues.put(value);
+    u.notifications.put({
+      id: id(u, 'NOT'),
+      recipient: operator,
+      messageKey: 'issue-raised',
+      params: { issueId: value.id, role: input.actor.role },
+      createdAt: at,
+      readAt: null,
+    });
+    if (input.actor.role === 'customer' && job?.workerId)
+      u.notifications.put({
+        id: id(u, 'NOT'),
+        recipient: { role: 'worker', id: job.workerId },
+        messageKey: 'customer-issue-raised',
+        params: { issueId: value.id, jobId: job.id },
+        createdAt: at,
+        readAt: null,
+      });
+    event(
+      u,
+      input.actor,
+      value.id,
+      'issue-raised',
+      `${input.issueType} issue recorded${job ? ` for ${job.id}` : ''}. No automatic worker penalty applied.`,
+      at,
+    );
+    return value.id;
+  });
+export const addIssueResponse = (
+  repo: ApplicationRepository,
+  issueId: string,
+  actor: Actor,
+  message: string,
+) =>
+  repo.transaction((u) => {
+    const issue = u.issues.get(issueId);
+    const clean = message.trim();
+    if (clean.length < 3) throw new Error('Enter a response.');
+    issue.comments.push({
+      id: id(u, 'COM'),
+      author: actor,
+      message: clean,
+      createdAt: now(),
+    });
+    issue.status = actor.role === 'operations' ? 'under-review' : 'waiting-for-response';
+    issue.updatedAt = now();
+    u.issues.put(issue);
+    event(u, actor, issue.id, 'issue-updated', 'A response was added to the issue.');
+  });
+export const updateIssueStatus = (
+  repo: ApplicationRepository,
+  issueId: string,
+  status: IssueStatus,
+) =>
+  repo.transaction((u) => {
+    const issue = u.issues.get(issueId);
+    issue.status = status;
+    issue.updatedAt = now();
+    issue.resolvedAt = ['resolved', 'closed'].includes(status) ? now() : null;
+    u.issues.put(issue);
+    event(u, operator, issue.id, 'issue-status-changed', `Issue is now ${status}.`);
   });
 export const updateWorkloadSettings = (
   repo: ApplicationRepository,

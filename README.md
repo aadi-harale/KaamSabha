@@ -15,7 +15,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000/app for the stateful application. `/` opens the same persona entry point. Open `/demo` for the unchanged deterministic judge presentation.
+Open http://localhost:3000 for User ID and password login. The normal application keeps customer, worker-member and cooperative-admin navigation separate. Open `/demo` for the unchanged deterministic judge presentation.
 
 ```sh
 npm test
@@ -44,12 +44,12 @@ React 19 + TypeScript, Vite/Vinext App Router and Tailwind. Accessible Base UI/s
 - `lib/application/model.ts`: jobs, events, journals and SHA-256 hash-chained `DecisionSnapshot` records.
 - `lib/application/route-service.ts`: one OSRM road-route adapter with explicit direct-path fallback.
 - `lib/i18n.ts`: persisted English, Hindi and Marathi resources for role entry and critical booking/worker controls.
-- `app/api/intake/route.ts`: schema-checked, server-key-only AI intake with a non-blocking local fallback.
+- `app/api/ai/intake/route.ts`: schema-checked, server-only OpenRouter intake with a non-blocking local fallback.
 - `supabase/migrations/`: normalized schema, indexes, RLS, private Storage, Realtime and deterministic seed.
 - `components/application.tsx`: customer, worker-member and operations personas.
 - `components/kaamsabha.tsx`: shared shell, comparison, metrics and receipts.
 - `components/product-views.tsx`: governance, worker, customer and operations flows.
-- `app/`: `/app`, `/customer`, `/worker`, `/governance`, `/operations`, plus isolated `/demo/*` judge routes.
+- `app/`: login at `/`, role-guarded customer, worker and operations route groups, plus isolated `/demo/*` judge routes.
 - `tests/`: domain and workflow integration tests.
 
 Lint covers application code and configuration; unchanged generated `components/ui` and `hooks/use-mobile.ts` are excluded because the scaffold itself fails its strict lint profile.
@@ -83,9 +83,15 @@ There are no real worker interviews, field validation, wage guarantees, legal ce
 
 Demo controls reset policies, ballots, cases, bookings, rates and comparison state. The worker selector lets judges follow the member actually assigned to a customer booking. That member can record departure and completion. Customer cancellation records real interaction timestamps; completed bookings support an explicitly simulated payment and invoice.
 
+## Application login
+
+The visible login uses a User ID and password. Connected mode maps that ID to a private `userid@auth.kaamsabha.local` identity and delegates password hashing and sessions to Supabase Auth. A committed seed script creates deterministic judge accounts after the Supabase migrations are applied. With no Supabase environment configured, the same accounts use PBKDF2 password proofs in the explicit device-local fallback; plaintext passwords are not stored in browser state.
+
+Judge credentials are documented separately in `JUDGE_LOGIN.md`. They are never printed in the normal application interface.
+
 ## Stateful application walkthrough
 
-The standard routes share one device-local repository. Create a booking in `/customer`; inspect its frozen dispatch receipt; switch to the named worker in `/worker`; then accept, travel, arrive, start and complete. Completion posts the worker's net contribution after the cooperative levy, an equal dividend to each active member and the remaining reserve as separate ledger entries.
+The standard routes share one device-local repository. Sign in as a customer, create a booking in `/customer`, and inspect its short assignment view. Log out and sign in with the assigned worker's account; that member alone sees the offer and can accept, travel, arrive, start and complete. Completion posts the worker's net contribution after the cooperative levy, an equal dividend to each active member and the remaining reserve as separate ledger entries.
 
 A worker may decline an offer, which records the decline and dispatches the same job again while excluding that member. Passed-over eligible members see the local job under “Why was I skipped?” Customer or worker cancellation records frozen evidence. A member opens a challenge from that decision; Operations replays the frozen inputs, records the verdict, applies the appropriate ledger/no-change remedy, then closes the case without changing the original snapshot.
 
@@ -99,6 +105,6 @@ The locally verified mode is single-browser until Supabase project credentials a
 
 ## Connected-mode configuration
 
-Copy `.env.example` to a private environment file and fill values from the supplied Supabase project. Never commit that file. Apply `supabase/migrations` in order, enable anonymous sign-in for demo access, and set `DEMO_ROLE_ACCESS=true` only for the judging environment. The application deliberately remains labelled **Offline demo mode** until a database repository is configured and verified; it does not silently combine browser state with hosted state.
+Copy `.env.example` to a private environment file and fill values from the supplied Supabase project. Never commit that file. Apply `supabase/migrations` in order, then run `npm run seed:auth` with the service-role key and three demo password environment values. Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` only on the server. The application deliberately remains labelled **Offline demo mode** until a database repository is configured and verified; it does not silently combine browser state with hosted state.
 
 Current verified state and remaining issues are recorded in `AGENT_STATE.md`.

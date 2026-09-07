@@ -14,6 +14,7 @@ import type { Locale } from '../i18n';
 import type { RouteResult } from './route-service';
 
 export type Persona = 'customer' | 'worker' | 'operations';
+export type AppRole = 'customer' | 'worker' | 'admin';
 export type Actor = { role: Persona; id: string };
 export type JobStage =
   | 'offered'
@@ -248,6 +249,44 @@ export type AppNotification = {
   createdAt: string;
   readAt: string | null;
 };
+export type IssueType =
+  | 'work-incomplete'
+  | 'quality'
+  | 'payment'
+  | 'worker-no-show'
+  | 'wrong-scope'
+  | 'unpaid-extra-work'
+  | 'unsafe-workplace'
+  | 'customer-unavailable'
+  | 'cancellation'
+  | 'policy-suggestion'
+  | 'other';
+export type IssueStatus =
+  | 'open'
+  | 'under-review'
+  | 'waiting-for-response'
+  | 'resolved'
+  | 'closed';
+export type IssueComment = {
+  id: string;
+  author: Actor;
+  message: string;
+  createdAt: string;
+};
+export type IssueRecord = {
+  id: string;
+  jobId: string | null;
+  raisedBy: Actor;
+  issueType: IssueType;
+  category: 'service' | 'scope' | 'payment' | 'safety' | 'policy' | 'other';
+  description: string;
+  status: IssueStatus;
+  assignedAdminId: string | null;
+  comments: IssueComment[];
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+};
 export type CancellationInput = {
   actor: 'customer' | 'worker';
   stage: JobStage;
@@ -320,7 +359,7 @@ export type CourtCase = {
   } | null;
 };
 export type ApplicationState = {
-  schema: 6;
+  schema: 7;
   revision: number;
   sequence: number;
   workers: Worker[];
@@ -343,18 +382,25 @@ export type ApplicationState = {
   otps: JobOtp[];
   evidence: JobEvidence[];
   notifications: AppNotification[];
+  issues: IssueRecord[];
   session: {
     persona: Persona;
     memberId: string;
     customerName: string;
     locale: Locale;
     onboardingDone: Record<string, boolean>;
+    auth: {
+      userId: string;
+      role: AppRole;
+      mode: 'offline' | 'supabase';
+      authenticatedAt: string;
+    } | null;
   };
   rates: typeof assumptions;
 };
 export function emptyApplication(): ApplicationState {
   return {
-    schema: 6,
+    schema: 7,
     revision: 0,
     sequence: 0,
     workers: dataset().workers,
@@ -404,12 +450,14 @@ export function emptyApplication(): ApplicationState {
     otps: [],
     evidence: [],
     notifications: [],
+    issues: [],
     session: {
       persona: 'customer',
       memberId: 'W01',
       customerName: 'Demo customer',
       locale: 'en',
       onboardingDone: {},
+      auth: null,
     },
     rates: copy(assumptions),
   };

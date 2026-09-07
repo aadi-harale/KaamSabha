@@ -20,6 +20,7 @@ import {
   type JobOtp,
   type JobEvidence,
   type AppNotification,
+  type IssueRecord,
 } from './model';
 
 export interface ReadRepository<T> {
@@ -76,6 +77,7 @@ export interface UnitOfWork {
   otps: MutableRepository<JobOtp>;
   evidence: MutableRepository<JobEvidence>;
   notifications: MutableRepository<AppNotification>;
+  issues: MutableRepository<IssueRecord>;
 }
 export interface ApplicationRepository {
   read(): ApplicationState;
@@ -126,6 +128,7 @@ function unit(state: ApplicationState): UnitOfWork {
     otps: collection(state.otps),
     evidence: collection(state.evidence),
     notifications: collection(state.notifications),
+    issues: collection(state.issues),
     snapshots: {
       all: () => freeze(snapshots.all()),
       get: (id) => freeze(snapshots.get(id)),
@@ -154,7 +157,7 @@ function decode(raw: string | null): ApplicationState {
     ApplicationState,
     'schema' | 'accountability' | 'catchUps'
   > & {
-    schema: 1 | 2 | 3 | 4 | 5 | 6;
+    schema: 1 | 2 | 3 | 4 | 5 | 6 | 7;
     accountability?: AccountabilityRecord[];
     catchUps?: CatchUpAllocation[];
   };
@@ -187,9 +190,10 @@ function decode(raw: string | null): ApplicationState {
     otps?: JobOtp[];
     evidence?: JobEvidence[];
     notifications?: AppNotification[];
+    issues?: IssueRecord[];
   };
-  if ([3, 4, 5].includes((legacy as { schema: number }).schema))
-    (legacy as { schema: number }).schema = 6;
+  if ([3, 4, 5, 6].includes((legacy as { schema: number }).schema))
+    (legacy as { schema: number }).schema = 7;
   const defaults = emptyApplication();
   legacy.members ??= defaults.members;
   legacy.changeOrders ??= [];
@@ -200,11 +204,13 @@ function decode(raw: string | null): ApplicationState {
   legacy.otps ??= [];
   legacy.evidence ??= [];
   legacy.notifications ??= [];
+  legacy.issues ??= [];
   legacy.session = {
     ...legacy.session,
     customerName: legacy.session.customerName ?? 'Demo customer',
     locale: legacy.session.locale ?? 'en',
     onboardingDone: legacy.session.onboardingDone ?? {},
+    auth: legacy.session.auth ?? null,
   };
   legacy.members = legacy.members.map((member) => ({
     ...member,
@@ -228,7 +234,7 @@ function decode(raw: string | null): ApplicationState {
   }));
   const s = legacy as ApplicationState;
   if (
-    s.schema !== 6 ||
+    s.schema !== 7 ||
     !Number.isInteger(s.revision) ||
     !Number.isInteger(s.sequence) ||
     !s.session ||
@@ -252,6 +258,7 @@ function decode(raw: string | null): ApplicationState {
       'otps',
       'evidence',
       'notifications',
+      'issues',
     ].every((k) => Array.isArray(s[k as keyof ApplicationState])) ||
     !s.policies.some(
       (p) => p.version === s.activeVersion && p.status === 'active',
