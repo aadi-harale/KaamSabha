@@ -36,6 +36,8 @@ No generic card dashboard, gradients, decorative imagery or marketing landing pa
 All five routes implemented and browser-verified. Constitution, same-data comparison, policy twin, voting/activation, frozen receipts, Replay Court, customer booking/cancellation/payment, and member departure/completion work locally. State persists in localStorage; reset restores deterministic domain and component state.
 Standard versus v2: 100/100 fulfilled in both; mean ETA 12.64 versus 14.94 minutes; lowest weekly net 573 versus 3731.8 rupees. Figures are illustrative, not field claims.
 Existing Sites project registered and saved in .openai/hosting.json. Reuse it; never recreate.
+Private deployment succeeded on 2026-09-07: https://kaamsabha-cooperative.nitinharale.chatgpt.site
+Published version 1 contains the verified implementation. Access remains owner-only; local execution requires no credentials.
 
 # Verified commands
 - npm test: 24 tests passed, including dispatch invariants, governance, appeals and booking conflicts.
@@ -55,8 +57,7 @@ Existing Sites project registered and saved in .openai/hosting.json. Reuse it; n
 - No field validation, measured comprehension study or automated accessibility certification claimed.
 
 # Next actions
-1. Finish private Sites publishing and record its observed outcome.
-2. No outstanding core-demo implementation tasks identified by completed checks.
+No outstanding core-demo implementation tasks identified by completed checks. Use README.md for the judge walkthrough and local startup.
 
 # Last updated
 2026-09-07: final implementation and second visual pass complete; automated and browser checks pass.
