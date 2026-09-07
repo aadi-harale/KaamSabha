@@ -12,6 +12,15 @@ import {
 } from '../engine';
 import type { Locale } from '../i18n';
 import type { RouteResult } from './route-service';
+import {
+  federationCooperatives,
+  goldenFederationCapacity,
+  type FederationCandidate,
+  type FederationCapacity,
+  type FederationCooperative,
+  type FederationTwinMetrics,
+  type ProtectionCovenant,
+} from '../federation';
 
 export type Persona = 'customer' | 'worker' | 'operations';
 export type AppRole = 'customer' | 'worker' | 'admin';
@@ -210,6 +219,7 @@ export type WorkOrder = {
   route?: RouteResult | null;
   travelProgress?: number;
   createdAt: string;
+  federationOpportunityId?: string | null;
 };
 export type OtpType = 'start' | 'completion';
 export type JobOtp = {
@@ -358,8 +368,51 @@ export type CourtCase = {
     expectedWorker: string | null;
   } | null;
 };
+export type FederationOpportunity = {
+  id: string;
+  jobId: string;
+  homeCooperativeId: string;
+  selectedCooperativeId: string | null;
+  service: Job['category'];
+  customerSlaMinutes: number;
+  reasonForOverflow: string;
+  status: 'open' | 'accepted' | 'fulfilled' | 'expired';
+  candidates: FederationCandidate[];
+  covenant: ProtectionCovenant;
+  workerId: string | null;
+  workerReceipt: Receipt | null;
+  createdAt: string;
+  resolvedAt: string | null;
+};
+export type FederationDecisionSnapshot = {
+  id: string;
+  opportunityId: string;
+  at: string;
+  previousHash: string;
+  payload: FederationOpportunity;
+  hash: string;
+};
+export type FederationReplay = {
+  id: string;
+  snapshotId: string;
+  status: 'open' | 'confirmed' | 'violation' | 'human-review' | 'closed';
+  explanation: string;
+  createdAt: string;
+};
+export type FederationSettlement = {
+  id: string;
+  jobId: string;
+  homeCooperativeId: string;
+  fulfillingCooperativeId: string;
+  customerTotal: number;
+  workerAmount: number;
+  welfareAmount: number;
+  fulfillingCooperativeAmount: number;
+  status: 'illustrative' | 'settled';
+  createdAt: string;
+};
 export type ApplicationState = {
-  schema: 7;
+  schema: 8;
   revision: number;
   sequence: number;
   workers: Worker[];
@@ -383,6 +436,18 @@ export type ApplicationState = {
   evidence: JobEvidence[];
   notifications: AppNotification[];
   issues: IssueRecord[];
+  federation: {
+    id: string;
+    name: string;
+    active: true;
+    cooperatives: FederationCooperative[];
+    capacities: FederationCapacity[];
+    opportunities: FederationOpportunity[];
+    snapshots: FederationDecisionSnapshot[];
+    replays: FederationReplay[];
+    settlements: FederationSettlement[];
+    twin: { localOnly: FederationTwinMetrics; mesh: FederationTwinMetrics } | null;
+  };
   session: {
     persona: Persona;
     memberId: string;
@@ -400,7 +465,7 @@ export type ApplicationState = {
 };
 export function emptyApplication(): ApplicationState {
   return {
-    schema: 7,
+    schema: 8,
     revision: 0,
     sequence: 0,
     workers: dataset().workers,
@@ -451,6 +516,18 @@ export function emptyApplication(): ApplicationState {
     evidence: [],
     notifications: [],
     issues: [],
+    federation: {
+      id: 'FED-PUNE-01',
+      name: 'Pune Labour Cooperative Federation',
+      active: true,
+      cooperatives: copy(federationCooperatives),
+      capacities: copy(goldenFederationCapacity),
+      opportunities: [],
+      snapshots: [],
+      replays: [],
+      settlements: [],
+      twin: null,
+    },
     session: {
       persona: 'customer',
       memberId: 'W01',

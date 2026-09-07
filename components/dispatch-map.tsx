@@ -5,10 +5,68 @@ import type { Map as LeafletMap } from 'leaflet';
 import type { Receipt } from '../lib/engine';
 import { presentReceiptMap, type DispatchMapPoint } from '../lib/map';
 import type { RouteResult } from '../lib/application/route-service';
+import type { FederationCandidate, FederationCooperative } from '../lib/federation';
 import { translate, type Locale } from '../lib/i18n';
 import './dispatch-map.css';
 
 type MapMode = 'customer' | 'decision' | 'governance';
+
+export function FederationMap({
+  cooperatives,
+  candidates,
+  selectedId,
+}: {
+  cooperatives: FederationCooperative[];
+  candidates: FederationCandidate[];
+  selectedId: string | null;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const map = useRef<LeafletMap | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!host.current) return;
+    let cancelled = false;
+    void import('leaflet').then((L) => {
+      if (cancelled || !host.current) return;
+      const instance = L.map(host.current, { scrollWheelZoom: false, zoomControl: true });
+      map.current = instance;
+      const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors', maxZoom: 18, crossOrigin: true,
+      });
+      let failures = 0;
+      tiles.on('tileerror', () => { failures += 1; if (failures >= 2) setFailed(true); });
+      tiles.addTo(instance);
+      const home = cooperatives.find((item) => item.id === 'COOP-KHARADI');
+      const bounds = L.latLngBounds([]);
+      cooperatives.forEach((cooperative) => {
+        const candidate = candidates.find((item) => item.cooperativeId === cooperative.id);
+        const state = cooperative.id === selectedId ? 'selected' : cooperative.id === home?.id ? 'home' : candidate?.eligible ? 'eligible' : 'blocked';
+        const label = cooperative.locality.replace('Viman Nagar', 'Viman');
+        bounds.extend([cooperative.lat, cooperative.lng]);
+        L.marker([cooperative.lat, cooperative.lng], {
+          keyboard: true,
+          title: `${cooperative.name}. ${candidate?.exclusionReason ?? (state === 'selected' ? 'Receiving cooperative selected.' : 'Home cooperative has no safe local capacity.')}`,
+          icon: L.divIcon({ className: 'federation-div-icon', html: `<span class="federation-marker ${state}">${label}<b>${state === 'selected' ? '24 min' : state === 'home' ? 'capacity 0' : candidate?.eta ? `${candidate.eta} min` : ''}</b></span>`, iconSize: [112, 48], iconAnchor: [56, 24] }),
+        }).addTo(instance);
+        if (home && cooperative.id !== home.id)
+          L.polyline([[home.lat, home.lng], [cooperative.lat, cooperative.lng]], {
+            color: state === 'selected' ? '#0F6B5C' : '#7C8792', weight: state === 'selected' ? 4 : 2,
+            dashArray: state === 'selected' ? undefined : '5 7', opacity: state === 'selected' ? .9 : .5,
+          }).addTo(instance);
+      });
+      instance.fitBounds(bounds, { padding: [58, 58], maxZoom: 12 });
+      requestAnimationFrame(() => instance.invalidateSize(false));
+    }).catch(() => setFailed(true));
+    return () => { cancelled = true; map.current?.remove(); map.current = null; };
+  }, [candidates, cooperatives, selectedId]);
+  return (
+    <section className="federation-map" aria-label="Federation capacity map">
+      <div className="map-heading"><div><strong>Pune Federation capacity</strong><span>Locality anchors only; worker addresses stay private</span></div><span>Live demo snapshot</span></div>
+      <p className="sr-only">Kharadi has no safe local capacity. Yerawada is selected at 24 minutes. Hadapsar is outside the service promise. Viman Nagar is workload blocked.</p>
+      <div className="map-viewport">{!failed && <div ref={host} className="leaflet-host" />}{failed && <div className="map-loading">Map tiles are unavailable. The capacity table remains authoritative.</div>}</div>
+    </section>
+  );
+}
 
 function markerHtml(point: DispatchMapPoint) {
   if (point.kind === 'customer')

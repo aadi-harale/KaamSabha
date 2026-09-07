@@ -222,7 +222,7 @@ describe('complete persisted application lifecycle', () => {
     });
     storage.setItem(APPLICATION_KEY, JSON.stringify(legacy));
     const restored = new LocalApplicationRepository(storage).read();
-    expect(restored.schema).toBe(7);
+    expect(restored.schema).toBe(8);
     expect(restored.accountability).toEqual([]);
     expect(restored.catchUps).toEqual([]);
     expect(restored.issues).toEqual([]);

@@ -6,12 +6,15 @@ KAAMSABHA is a SIH26089 cooperative service marketplace and governance runtime f
 
 The cooperative belongs to workers, and members govern the rules that decide who earns. The Worker Protection Floor, Cooperative Dispatch Constitution, Counterfactual Policy Twin, Decision Receipts, Replay Court, Opportunity Access Normalization, Protected Payout, Scope Lock, cancellation protection, Rating Firewall and Workload Safety Guard remain active.
 
+The Federation Opportunity Exchange adds a second protected decision layer: the federation chooses an eligible cooperative by capacity, covenant compatibility and SLA; that receiving cooperative then uses its own constitution to choose a worker. Cooperatives cannot compete by lowering worker pay or protection.
+
 # Routes and roles
 
 - `/` and `/app`: User ID/password login. Role choice appears only here.
 - `/customer`, `/customer/bookings`, `/customer/past`, `/customer/profile`: service-first home, five-step booking, active work, persisted history, customer issues and profile.
 - `/worker`, `/worker/current`, `/worker/fair-work`, `/worker/issues`, `/worker/more`: identity-bound dashboard, task view, plain-language receipts, challenges, member voting, issues, earnings and workload limits.
 - `/operations` with `/jobs`, `/workers`, `/issues`, `/settlements`, `/demand`: cooperative-admin registers with grouped responsive navigation.
+- `/operations/federation`: capacity map, overflow request, cooperative candidates, two-level receipt, replay, settlement and Local-only versus Federation Mesh Policy Twin.
 - `/governance`: protection validation, Policy Twin, voting, activation, accountability and bounded catch-up.
 - `/demo` and `/demo/*`: isolated deterministic judge presentation using the same engine.
 - `/api/ai/intake` and compatibility `/api/intake`: server-key-only structured OpenRouter intake.
@@ -20,7 +23,7 @@ Normal headers expose no cross-role switch. Logout is the only role-change path.
 
 # Data architecture
 
-React 19, TypeScript, Vinext/Vite, Leaflet, OpenStreetMap, OSRM and Supabase JS. Schema-7 offline state persists atomically in localStorage behind repository interfaces. Jobs, policies, frozen snapshots, events, ledgers, cases, issues, settlements, opportunities, OTPs, evidence metadata, notifications, routes, auth session, locale and onboarding share one envelope. Schema 1–6 migration preserves frozen snapshot payloads and hashes. Commands own mutations and reject invalid transitions. Decision snapshots use canonical SHA-256 hashes and previous-hash links. Deterministic seed 26089 contains 12 members, 100 historical jobs, five services and ten Pune locality anchors.
+React 19, TypeScript, Vinext/Vite, Leaflet, OpenStreetMap, OSRM and Supabase JS. Schema-8 offline state persists atomically in localStorage behind repository interfaces. Jobs, policies, frozen snapshots, events, ledgers, cases, issues, settlements, opportunities, OTPs, evidence metadata, notifications, routes, auth session, locale and onboarding share one envelope. Schema 1–6 migration preserves frozen snapshot payloads and hashes. Commands own mutations and reject invalid transitions. Decision snapshots use canonical SHA-256 hashes and previous-hash links. Deterministic seed 26089 contains 12 members, 100 historical jobs, five services and ten Pune locality anchors.
 
 # Authentication and Supabase state
 
@@ -49,12 +52,18 @@ AGENTS.md is authoritative. Palette: white canvas, #EDF1F3 register, #172B36 ink
 - Worker login binds one member. Worker Fair Work shows simple eligibility checks first, with candidate map, calculations, hashes and JSON under Advanced decision details. Workers can review personal policy impact and vote from their own account.
 - AI intake uses a fixed server prompt, validates structured output, times out and returns non-blocking error responses. The customer confirms or ignores every suggestion.
 - `/demo` remains isolated.
+- A local unassigned dispatch automatically opens the Federation Opportunity Exchange. The golden Kharadi electrician case selects Yerawada at 24 minutes, rejects Hadapsar at 39 minutes, blocks Viman Nagar by workload safety, then runs constitution v2 to select Meena/W01.
+- Federation capacity, opportunities, linked receipts, chained SHA-256 snapshots, replay, events, notifications, illustrative settlements and Policy Twin results survive repository reload.
+- The ₹900 illustrative settlement reconciles as ₹760 worker + ₹40 welfare + ₹100 fulfilling cooperative; no unconfigured federation fee is invented.
+- Migration 012 adds normalized federation tables, participant/admin RLS and Realtime publication for opportunity requests. Hosted execution still requires credentials.
 
 # Production browser evidence
 
 A production-browser authentication walkthrough at `http://127.0.0.1:8787` created `KMS-LIVE-00001` through all five booking steps. Active constitution v2 assigned Ravi Shinde with ₹760 service pay, ₹87 estimated costs and ₹673 estimated net. The customer map showed Ravi, 1 km, 10 minutes and the service promise. After logout, `ravi01` alone showed that offer, its workload summary and the simplified receipt. Customer→worker and admin→customer direct URL attempts redirected to the signed-in role home. Customer, worker and admin headers contained no cross-role selector. Login, customer home/map, worker home/current/Fair Work/receipt and admin overview/governance were visually inspected at the available wide and narrow app-panel sizes.
 
 The earlier complete lifecycle verification remains valid: OSRM returned a 1.7 km/3-minute route for a separate illustrative booking; explicit travel, start OTP, completion OTP, settlement and refresh persistence passed. Marathi customer/worker views at 390×844 had no page overflow.
+
+The production browser ran the federation scenario, rendered the Leaflet capacity map, selected Yerawada, displayed both linked receipts, replayed the frozen cooperative decision as confirmed and calculated Local-only 0/12 served versus Federation Mesh 11/12 served with 22.5-minute average ETA, 25-minute p90 and zero protection violations. Customer view showed only Meena, 17 minutes, 3.2 km and a subtle federation note. Meena's worker view showed ₹760 pay, ₹134 estimated costs and ₹626 estimated net with unchanged protections.
 
 # Known limitations
 
@@ -69,10 +78,10 @@ The earlier complete lifecycle verification remains valid: OSRM returned a 1.7 k
 
 # Verified commands
 
-- `npm test -- --reporter=dot`: 75 tests passed across 9 files.
+- `npm test -- --reporter=dot`: 80 tests passed across 10 files.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
-- `npm run build`: passed; root, 18 role routes, five demo routes and three API routes emitted.
+- `npm run build`: passed; the existing routes plus /operations/federation emitted.
 - Production browser: customer, assigned worker and admin login; cross-role redirects; five-step booking; real map; member-bound job; simplified receipt; responsive role navigation; no application error overlay observed.
 
 # Next actions

@@ -20,12 +20,12 @@
   --radius-lg: 8px;
 }
 :root {
-  --background: #edf1f3;
+  --background: #eef2f4;
   --foreground: #172b36;
   --primary: #006b60;
   --primary-foreground: #fff;
   --popover: #fff;
-  --muted: #edf1f3;
+  --muted: #e5f2ee;
   --muted-foreground: #526779;
   --border: #cbd5da;
   --white: #fff;
@@ -42,6 +42,8 @@ body {
   background: var(--background);
   font-size: 16px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 button,
 input,
@@ -107,8 +109,8 @@ summary:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid #006b60 !important;
-  outline-offset: 4px !important;
+  outline: 3px solid #f3c66b !important;
+  outline-offset: 3px !important;
 }
 button:disabled {
   cursor: default;

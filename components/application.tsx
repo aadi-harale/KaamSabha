@@ -25,6 +25,7 @@ import {
   SprayCan,
   Refrigerator,
   HeartHandshake,
+  Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -84,6 +85,9 @@ import {
   raiseIssue,
   addIssueResponse,
   updateIssueStatus,
+  createFederationDemo,
+  runFederationTwin,
+  replayFederationDecision,
 } from '@/lib/application/service';
 import {
   type CourtCase,
@@ -99,7 +103,7 @@ import {
   type IssueStatus,
 } from '@/lib/application/model';
 import { priceBands } from '@/lib/protections';
-import { ActiveTravelMap, DispatchDecisionMap } from '@/components/dispatch-map';
+import { ActiveTravelMap, DispatchDecisionMap, FederationMap } from '@/components/dispatch-map';
 import { compressEvidence } from '@/lib/application/image-evidence';
 import { localeOptions, serviceLabel, translate, type Locale } from '@/lib/i18n';
 import { roleLanding } from '@/lib/application/auth';
@@ -185,6 +189,7 @@ function NavigationIcon({ href }: { href: string }) {
   if (href.endsWith('/profile')) return <UserRound aria-hidden="true" />;
   if (href.endsWith('/more')) return <Menu aria-hidden="true" />;
   if (href === '/governance') return <Vote aria-hidden="true" />;
+  if (href.endsWith('/federation')) return <Network aria-hidden="true" />;
   return <Home aria-hidden="true" />;
 }
 function AppShell({
@@ -238,6 +243,7 @@ function AppShell({
             ['/governance', t('governance')],
             ['/operations/settlements', 'Settlements'],
             ['/operations/demand', 'Demand'],
+            ['/operations/federation', 'Federation'],
           ];
   const home = roleLanding(expectedRole);
   return (
@@ -298,7 +304,9 @@ function AppShell({
           <span>Operations</span>
           {navigation.slice(0, 4).map(([href, label]) => <Link href={href} key={href} aria-current={path === href ? 'page' : undefined}><NavigationIcon href={href} />{label}</Link>)}
           <span>Governance and records</span>
-          {navigation.slice(4).map(([href, label]) => <Link href={href} key={href} aria-current={path === href ? 'page' : undefined}><NavigationIcon href={href} />{label}</Link>)}
+          {navigation.slice(4, 6).map(([href, label]) => <Link href={href} key={href} aria-current={path === href ? 'page' : undefined}><NavigationIcon href={href} />{label}</Link>)}
+          <span>Planning</span>
+          {navigation.slice(6).map(([href, label]) => <Link href={href} key={href} aria-current={path === href ? 'page' : undefined}><NavigationIcon href={href} />{label}</Link>)}
         </aside>
       )}
       {error && (
@@ -968,6 +976,9 @@ export function CustomerApplication({
                 <p>
                   Assigned member: {workerName(state, job.workerId)}
                 </p>
+                {job.federationOpportunityId && (
+                  <p className="federation-customer-note"><Network aria-hidden="true" /> Verified cooperative worker found through the Pune Labour Cooperative Federation network.</p>
+                )}
                 {job.emergency && (
                   <p className="protection-note">
                     Emergency request / hard eligibility preserved
@@ -1427,6 +1438,9 @@ export function WorkerApplication({
                 <p>
                   {job.id} / assigned under v{snap?.policy.version}
                 </p>
+                {job.federationOpportunityId && (
+                  <p className="federation-worker-note"><Network aria-hidden="true" /><span><strong>Federation job</strong>Requested by Kharadi Cooperative. Your cooperative is Yerawada. Your protections stay the same.</span></p>
+                )}
                 <div className="offer-register">
                   <div>
                     <span>{t('bookedScope')}</span>
@@ -2573,12 +2587,73 @@ function OperationsIssues() {
     </section>
   );
 }
+
+function FederationPanel() {
+  const { state, run } = useApplication();
+  const federation = state.federation;
+  const opportunity = federation.opportunities.at(-1);
+  const snapshot = opportunity
+    ? federation.snapshots.find((item) => item.opportunityId === opportunity.id)
+    : null;
+  const replay = snapshot
+    ? federation.replays.find((item) => item.snapshotId === snapshot.id)
+    : null;
+  const name = (id: string | null) =>
+    federation.cooperatives.find((item) => item.id === id)?.name ?? 'Not selected';
+  return (
+    <div className="federation-workspace">
+      <section className="federation-thesis">
+        <Network aria-hidden="true" />
+        <div><h2>Federation Opportunity Exchange</h2><p>When one society has excess demand and another has safe capacity, they can share the opportunity without combining workers into one central pool.</p></div>
+        {!opportunity && <Button onClick={() => void run(createFederationDemo)}>Run protected overflow scenario</Button>}
+      </section>
+      {opportunity ? (
+        <>
+          <FederationMap cooperatives={federation.cooperatives} candidates={opportunity.candidates} selectedId={opportunity.selectedCooperativeId} />
+          <section className="federation-flow" aria-label="Two level federation decision">
+            <div><span>Home society</span><strong>Kharadi</strong><small>No safe local capacity within 35 min</small></div>
+            <div><span>Federation chooses the society</span><strong>Yerawada selected</strong><small>Capacity, protection and SLA passed</small></div>
+            <div><span>Society chooses the worker</span><strong>{workerName(state, opportunity.workerId)}</strong><small>Yerawada constitution v{opportunity.workerReceipt?.policy.version}</small></div>
+          </section>
+          <section className="ops-register federation-exchange">
+            <div className="section-heading"><div><h2>Live overflow request</h2><p>{opportunity.jobId} / {opportunity.service} / customer promise {opportunity.customerSlaMinutes} min</p></div><span className="stage">Accepted</span></div>
+            <table className="federation-candidate-table" aria-label="Federation candidate cooperatives">
+              <thead><tr className="table-head"><th>Cooperative</th><th>Capacity</th><th>ETA</th><th>Protection</th><th>Result</th></tr></thead>
+              <tbody>
+              {opportunity.candidates.map((candidate) => (
+                <tr key={candidate.cooperativeId} className={candidate.cooperativeId === opportunity.selectedCooperativeId ? 'selected' : ''}>
+                  <th>{name(candidate.cooperativeId)}</th><td>{candidate.availableWorkers} available</td><td>{candidate.eta < 900 ? `${candidate.eta} min` : '—'}</td><td>{candidate.protectionCompatible ? 'Compatible' : 'Blocked'}</td><td>{candidate.cooperativeId === opportunity.selectedCooperativeId ? 'Selected' : candidate.exclusionReason}</td>
+                </tr>
+              ))}
+              </tbody>
+            </table>
+          </section>
+          <div className="federation-receipts">
+            <section className="live-panel"><span className="receipt-level">Receipt 1 / federation</span><h2>Why did this job move to Yerawada?</h2><ul><li>✓ Two electricians safely available</li><li>✓ 24-minute arrival is inside the promise</li><li>✓ Worker protections match the federation covenant</li><li>Hadapsar: 39 minutes, outside promise</li><li>Viman Nagar: workload protection active</li></ul><strong>Result: Yerawada Cooperative selected.</strong>{snapshot && <Button variant="outline" onClick={() => void run((repo) => replayFederationDecision(repo, snapshot.id))}>Replay frozen federation receipt</Button>}{replay && <p className={`replay-result ${replay.status}`}>{replay.status === 'confirmed' ? 'Federation decision confirmed' : replay.status}<small>{replay.explanation}</small></p>}</section>
+            <section className="live-panel"><span className="receipt-level">Receipt 2 / worker</span><h2>Why did {workerName(state, opportunity.workerId)} receive it?</h2><ul><li>✓ Right verified skill</li><li>✓ Available and workload safe</li><li>✓ Customer still receives service on time</li><li>↑ Fewer work opportunities this week</li></ul><strong>Result: the receiving society selected its own member.</strong></section>
+          </div>
+          <section className="federation-settlement">
+            <span>Illustrative settlement / no clearing claim</span><strong>₹900 customer total = ₹760 worker + ₹40 welfare + ₹100 fulfilling cooperative</strong><small>No home-society or federation fee is invented.</small>
+          </section>
+        </>
+      ) : (
+        <div className="empty-state"><Network /><h3>No overflow request yet</h3><p>Run the deterministic Kharadi evening peak scenario.</p></div>
+      )}
+      <section className="federation-twin">
+        <div className="section-heading"><div><h2>Local only vs Federation Mesh</h2><p>Same 12 capacity scenarios. Same societies. Same worker protections.</p></div>{!federation.twin && <Button onClick={() => void run(runFederationTwin)}>Run federation Policy Twin</Button>}</div>
+        {federation.twin && <div className="federation-twin-grid">
+          {([['Local only', federation.twin.localOnly], ['Federation Mesh', federation.twin.mesh]] as const).map(([label, metrics]) => <article key={label}><h3>{label}</h3><dl><div><dt>Jobs served</dt><dd>{metrics.served}</dd></div><div><dt>Unfilled</dt><dd>{metrics.unfilled}</dd></div><div><dt>Average ETA</dt><dd>{metrics.averageEta} min</dd></div><div><dt>p90 ETA</dt><dd>{metrics.p90Eta} min</dd></div><div><dt>Cross-coop</dt><dd>{metrics.crossCooperative}</dd></div><div><dt>Protection violations</dt><dd>{metrics.protectionViolations}</dd></div></dl></article>)}
+        </div>}
+      </section>
+    </div>
+  );
+}
 export function OperationsApplication({
   governance = false,
   section = 'overview',
 }: {
   governance?: boolean;
-  section?: 'overview' | 'jobs' | 'workers' | 'issues' | 'settlements' | 'demand';
+  section?: 'overview' | 'jobs' | 'workers' | 'issues' | 'settlements' | 'demand' | 'federation';
 }) {
   const { state, reset } = useApplication();
   const router = useRouter();
@@ -2620,6 +2695,8 @@ export function OperationsApplication({
                   ? 'Settlements'
                   : section === 'demand'
                     ? 'Demand outlook'
+                    : section === 'federation'
+                      ? 'Federation Opportunity Exchange'
                     : section === 'issues'
                       ? 'Issues and challenges'
                       : 'Cooperative operations'
@@ -2627,6 +2704,8 @@ export function OperationsApplication({
         text={
           governance
             ? 'Members test and decide the rules that allocate work.'
+            : section === 'federation'
+              ? 'Share demand and safe capacity while each society keeps control of its own workers.'
             : section === 'overview'
               ? 'Every counter comes from this device-local event envelope.'
               : 'A focused register from the same cooperative records.'
@@ -2645,10 +2724,18 @@ export function OperationsApplication({
             >
               Governance
             </Link>
+            <Link
+              aria-current={section === 'federation' ? 'page' : undefined}
+              href="/operations/federation"
+            >
+              Federation
+            </Link>
           </div>
         }
       />
-      {section === 'issues' ? (
+      {section === 'federation' ? (
+        <FederationPanel />
+      ) : section === 'issues' ? (
         <OperationsIssues />
       ) : governance ? (
         <GovernancePanel />

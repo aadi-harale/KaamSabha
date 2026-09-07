@@ -157,7 +157,7 @@ function decode(raw: string | null): ApplicationState {
     ApplicationState,
     'schema' | 'accountability' | 'catchUps'
   > & {
-    schema: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+    schema: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
     accountability?: AccountabilityRecord[];
     catchUps?: CatchUpAllocation[];
   };
@@ -192,8 +192,8 @@ function decode(raw: string | null): ApplicationState {
     notifications?: AppNotification[];
     issues?: IssueRecord[];
   };
-  if ([3, 4, 5, 6].includes((legacy as { schema: number }).schema))
-    (legacy as { schema: number }).schema = 7;
+  if ([3, 4, 5, 6, 7].includes((legacy as { schema: number }).schema))
+    (legacy as { schema: number }).schema = 8;
   const defaults = emptyApplication();
   legacy.members ??= defaults.members;
   legacy.changeOrders ??= [];
@@ -205,6 +205,7 @@ function decode(raw: string | null): ApplicationState {
   legacy.evidence ??= [];
   legacy.notifications ??= [];
   legacy.issues ??= [];
+  legacy.federation ??= defaults.federation;
   legacy.session = {
     ...legacy.session,
     customerName: legacy.session.customerName ?? 'Demo customer',
@@ -234,7 +235,7 @@ function decode(raw: string | null): ApplicationState {
   }));
   const s = legacy as ApplicationState;
   if (
-    s.schema !== 7 ||
+    s.schema !== 8 ||
     !Number.isInteger(s.revision) ||
     !Number.isInteger(s.sequence) ||
     !s.session ||

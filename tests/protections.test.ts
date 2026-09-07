@@ -153,8 +153,12 @@ describe('immutable Worker Protection Floor', () => {
     await createBooking(repo, booking);
     const state = repo.read();
     const receipt = state.snapshots[0].receipt!;
-    expect(state.jobs[0].stage).toBe('unassigned');
+    expect(state.jobs[0].stage).toBe('offered');
     expect(state.opportunities).toHaveLength(0);
+    expect(state.federation.opportunities[0]).toMatchObject({
+      homeCooperativeId: 'COOP-KHARADI',
+      selectedCooperativeId: 'COOP-YERAWADA',
+    });
     expect(
       receipt.candidates.find((candidate) => candidate.worker.id === 'W01')
         ?.failed,

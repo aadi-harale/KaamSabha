@@ -53,6 +53,12 @@ import type { ApplicationRepository, UnitOfWork } from './repositories';
 import { presentReceiptMap } from '../map';
 import { fetchRoute } from './route-service';
 import { authenticateUser, endAuthenticatedSession } from './auth';
+import {
+  federationCovenant,
+  matchFederationCooperative,
+  receivingCooperativeDispatch,
+  simulateFederationTwin,
+} from '../federation';
 
 export type NewBooking = {
   service: Job['category'];
@@ -267,7 +273,43 @@ export async function createBooking(
       `${job.category} requested.`,
       createdAt,
     );
-    const assigned = await assign(u, job, [], id(u, 'DSP'), customer);
+    let assigned = await assign(u, job, [], id(u, 'DSP'), customer);
+    let federationOpportunityId: string | null = null;
+    if (!assigned.receipt.selected) {
+      const match = matchFederationCooperative({
+        homeCooperativeId: 'COOP-KHARADI', service: job.category, sla: job.sla,
+        workerPayout: pricing.workerServicePay, capacities: u.state.federation.capacities,
+      });
+      if (match.selectedCooperativeId) {
+        const workerReceipt = receivingCooperativeDispatch(job, activePolicy(u));
+        if (workerReceipt.selected) {
+          federationOpportunityId = id(u, 'FED-OPP');
+          const opportunity = {
+            id: federationOpportunityId, jobId, homeCooperativeId: 'COOP-KHARADI',
+            selectedCooperativeId: match.selectedCooperativeId, service: job.category,
+            customerSlaMinutes: job.sla, reasonForOverflow: 'No local safe capacity within the customer promise.',
+            status: 'accepted' as const, candidates: match.candidates, covenant: federationCovenant,
+            workerId: workerReceipt.selected, workerReceipt, createdAt, resolvedAt: createdAt,
+          };
+          u.state.federation.opportunities.push(opportunity);
+          const workerDecision = await snapshot(u, {
+            jobId, kind: 'dispatch', at: createdAt, actor: operator, policy: activePolicy(u),
+            receipt: workerReceipt, evidence: null,
+            outcome: { workerId: workerReceipt.selected, charge: 0, attribution: 'receiving cooperative constitution' },
+          });
+          const federationBody = {
+            id: id(u, 'FED-DEC'), opportunityId: federationOpportunityId, at: createdAt,
+            previousHash: u.state.federation.snapshots.at(-1)?.hash ?? 'FEDERATION-GENESIS',
+            payload: copy(opportunity),
+          };
+          u.state.federation.snapshots.push({ ...federationBody, hash: await digest(federationBody) });
+          event(u, operator, jobId, 'FEDERATION_OVERFLOW_OPENED', 'Local dispatch had no safe assignment; federation capacity check opened.');
+          event(u, operator, jobId, 'COOPERATIVE_SELECTED', `${match.selectedCooperativeId} selected by capacity, covenant and SLA.`);
+          event(u, operator, jobId, 'FEDERATION_WORKER_SELECTED', `${workerReceipt.selected} selected by the receiving cooperative constitution.`);
+          assigned = { receipt: workerReceipt, decision: workerDecision, dispatchId: federationOpportunityId };
+        }
+      }
+    }
     const order: WorkOrder = {
       id: jobId,
       job: {
@@ -292,6 +334,7 @@ export async function createBooking(
       route: null,
       travelProgress: 0,
       createdAt,
+      federationOpportunityId,
     };
     u.jobs.put(order);
     return order.id;
@@ -1824,4 +1867,125 @@ export const closeChallenge = (repo: ApplicationRepository, caseId: string) =>
       'challenge-closed',
       'Case closed; frozen decision retained.',
     );
+  });
+
+export const createFederationDemo = (repo: ApplicationRepository) =>
+  repo.transaction(async (u) => {
+    const existing = u.state.federation.opportunities.find((item) => item.status !== 'expired');
+    if (existing) return existing.id;
+    const createdAt = now();
+    const jobId = id(u, 'KMS-FED');
+    const job: Job = {
+      id: jobId,
+      category: 'Electrician',
+      customer: u.state.session.customerName,
+      zone: 0,
+      payout: 760,
+      duration: 60,
+      requested: 7 * 1440 + 18 * 60,
+      sla: 35,
+      emergency: false,
+      consumables: 45,
+      cancellationLoss: 0,
+      status: 'assigned',
+      requirement: 'Evening switchboard safety check',
+    };
+    event(u, operator, jobId, 'LOCAL_CAPACITY_EXHAUSTED', 'No Kharadi member could safely arrive within 35 minutes.');
+    const match = matchFederationCooperative({
+      homeCooperativeId: 'COOP-KHARADI',
+      service: job.category,
+      sla: job.sla,
+      workerPayout: job.payout,
+      capacities: u.state.federation.capacities,
+    });
+    const workerReceipt = receivingCooperativeDispatch(job, activePolicy(u));
+    const opportunityId = id(u, 'FED-OPP');
+    const opportunity = {
+      id: opportunityId,
+      jobId,
+      homeCooperativeId: 'COOP-KHARADI',
+      selectedCooperativeId: match.selectedCooperativeId,
+      service: job.category,
+      customerSlaMinutes: job.sla,
+      reasonForOverflow: 'No local safe capacity within the customer promise.',
+      status: 'accepted' as const,
+      candidates: match.candidates,
+      covenant: federationCovenant,
+      workerId: workerReceipt.selected,
+      workerReceipt,
+      createdAt,
+      resolvedAt: createdAt,
+    };
+    if (!opportunity.selectedCooperativeId || !opportunity.workerId)
+      throw new Error('The deterministic federation scenario did not produce a protected assignment.');
+    u.state.federation.opportunities.push(opportunity);
+    event(u, operator, jobId, 'FEDERATION_OVERFLOW_OPENED', 'Kharadi opened a protected capacity request.');
+    event(u, operator, jobId, 'FEDERATION_CANDIDATES_EVALUATED', `${match.candidates.length} member cooperatives checked for capacity, protection and SLA.`);
+    event(u, operator, jobId, 'COOPERATIVE_SELECTED', 'Yerawada Labour Cooperative selected without wage bidding.');
+    const workerDecision = await snapshot(u, {
+      jobId,
+      kind: 'dispatch',
+      at: createdAt,
+      actor: operator,
+      policy: activePolicy(u),
+      receipt: workerReceipt,
+      evidence: null,
+      outcome: { workerId: opportunity.workerId, charge: 0, attribution: 'receiving cooperative constitution' },
+    });
+    const federationBody = {
+      id: id(u, 'FED-DEC'),
+      opportunityId,
+      at: createdAt,
+      previousHash: u.state.federation.snapshots.at(-1)?.hash ?? 'FEDERATION-GENESIS',
+      payload: copy(opportunity),
+    };
+    u.state.federation.snapshots.push({ ...federationBody, hash: await digest(federationBody) });
+    u.jobs.put({
+      id: jobId, job, stage: 'offered', workerId: opportunity.workerId, declined: [],
+      receiptIds: [workerDecision.id], dispatchId: opportunityId, acceptedAt: null,
+      departedAt: null, arrivedAt: null, workStartedAt: null, completedAt: null,
+      cancellationId: null, pricing: { customerTotal: 900, workerServicePay: 760, welfareContribution: 40, cooperativeOperations: 100, minimumWorkerPay: 650 },
+      refusals: [], settlementId: null, emergency: false, route: null, travelProgress: 0,
+      createdAt, federationOpportunityId: opportunityId,
+    });
+    u.notifications.put({ id: id(u, 'NTF'), recipient: { role: 'worker', id: opportunity.workerId }, messageKey: 'FEDERATION_JOB', params: { jobId }, createdAt, readAt: null });
+    u.state.federation.settlements.push({
+      id: id(u, 'FED-SET'), jobId, homeCooperativeId: opportunity.homeCooperativeId,
+      fulfillingCooperativeId: opportunity.selectedCooperativeId, customerTotal: 900,
+      workerAmount: 760, welfareAmount: 40, fulfillingCooperativeAmount: 100,
+      status: 'illustrative', createdAt,
+    });
+    event(u, operator, jobId, 'FEDERATION_WORKER_SELECTED', `${opportunity.workerId} selected by Yerawada constitution v${activePolicy(u).version}.`);
+    return opportunityId;
+  });
+
+export const runFederationTwin = (repo: ApplicationRepository) =>
+  repo.transaction((u) => {
+    u.state.federation.twin = simulateFederationTwin();
+    event(u, operator, u.state.federation.id, 'FEDERATION_TWIN_SIMULATED', 'Identical capacity scenarios compared in local-only and federation modes.');
+  });
+
+export const replayFederationDecision = (repo: ApplicationRepository, snapshotId: string) =>
+  repo.transaction(async (u) => {
+    const snapshot = u.state.federation.snapshots.find((item) => item.id === snapshotId);
+    if (!snapshot) throw new Error('Federation receipt not found.');
+    const { hash, ...body } = snapshot;
+    const integrity = (await digest(body)) === hash;
+    const match = matchFederationCooperative({
+      homeCooperativeId: snapshot.payload.homeCooperativeId,
+      service: snapshot.payload.service,
+      sla: snapshot.payload.customerSlaMinutes,
+      workerPayout: snapshot.payload.workerReceipt?.job.payout ?? 0,
+      capacities: u.state.federation.capacities,
+    });
+    const confirmed = integrity && match.selectedCooperativeId === snapshot.payload.selectedCooperativeId;
+    const value = {
+      id: id(u, 'FED-REPLAY'), snapshotId,
+      status: (integrity ? (confirmed ? 'confirmed' : 'violation') : 'human-review') as 'confirmed' | 'violation' | 'human-review',
+      explanation: !integrity ? 'Frozen federation receipt failed integrity verification.' : confirmed ? 'Frozen capacity, protection and SLA checks reproduce the receiving cooperative.' : 'Frozen inputs produce a different receiving cooperative.',
+      createdAt: now(),
+    };
+    const index = u.state.federation.replays.findIndex((item) => item.snapshotId === snapshotId);
+    if (index < 0) u.state.federation.replays.push(value); else u.state.federation.replays[index] = value;
+    event(u, operator, snapshot.payload.jobId, 'FEDERATION_DECISION_REPLAYED', value.explanation);
   });

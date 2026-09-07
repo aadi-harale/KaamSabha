@@ -1,5 +1,15 @@
 # KAAMSABHA — what we built, how it works, and why it helps
 
+## Federation Opportunity Exchange
+
+KAAMSABHA now shares excess demand between autonomous cooperatives without flattening workers into one platform-wide pool. When local dispatch cannot produce a safe assignment, the federation checks nearby societies for capacity, the customer SLA and the complete Worker Protection Covenant. It selects a cooperative, never an individual worker. The receiving cooperative then runs its own active Dispatch Constitution to select its member.
+
+The deterministic judge scenario starts with a Kharadi electrician request. Kharadi has no safe local capacity, Yerawada has two available electricians at 24 minutes, Hadapsar misses the 35-minute promise at 39 minutes, and Viman Nagar is blocked by its workload guard. Yerawada is selected, then its constitution selects Meena. The customer sees a normal verified-worker tracking experience; the worker sees the scope, ₹760 payout and unchanged protections; operations sees the capacity map and evidence.
+
+Every transfer produces two connected records: a federation receipt explaining why Yerawada received the request and a worker receipt explaining why Meena received the job. The federation snapshot is hashed, chained, persisted and replayable. The calculated Policy Twin compares identical Local-only and Federation Mesh capacity scenarios. The illustrative ₹900 settlement reconciles exactly as ₹760 worker, ₹40 welfare and ₹100 fulfilling cooperative, with no invented federation fee.
+
+The implementation uses the existing local repository envelope and command layer, a pure deterministic federation engine, Leaflet/OpenStreetMap locality anchors, events and notifications. Migration 012 provides normalized Postgres tables, role-aware RLS and a Realtime publication for a connected Supabase deployment. Hosted execution remains dependent on project credentials.
+
 ## Final role and accessibility pass
 
 The normal application now starts with User ID and password login. Customers, individual worker-members and cooperative administrators receive separate route groups and navigation; direct cross-role URLs redirect to the signed-in role. A configured installation uses Supabase Auth through private internal email identities, while the explicit offline judge mode validates deterministic accounts against PBKDF2 proofs. Passwords are never stored in application state or shown after login.
