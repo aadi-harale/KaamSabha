@@ -145,6 +145,25 @@ export type Simulation = {
 };
 export const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Canonical plain-language representation of the executable dispatch rule.
+ * Keep this text aligned with dispatch(): hard eligibility runs first; the
+ * cooperative opportunity rule only operates inside those constraints.
+ */
+export function policyRuleText(policy: Policy, emergency = false) {
+  const hardChecks =
+    'required skill, active status, availability, schedule, service radius and customer SLA';
+  if (emergency)
+    return `Constitution v${policy.version}: after ${hardChecks} checks, emergency work goes to the fastest eligible member. The opportunity preference is bypassed.`;
+  if (policy.parameters.floor <= 0)
+    return `Policy v${policy.version}: after ${hardChecks} checks, choose the fastest eligible member; service quality and stable member ID resolve ties.`;
+  const secondary = policy.parameters.netPriority
+    ? 'If weekly net livelihood is tied, prefer the higher estimated net contribution from this job, then lower ETA, service quality and stable member ID.'
+    : 'If weekly net livelihood is tied, prefer lower ETA, then service quality and stable member ID.';
+  return `Constitution v${policy.version}: after ${hardChecks} checks, prefer an eligible member below the ₹${policy.parameters.floor.toLocaleString('en-IN')} weekly net-livelihood floor only when the added ETA is at most ${policy.parameters.maxDelay} minutes. Lowest weekly net livelihood has priority. ${secondary}`;
+}
+
 export function dataset(seed = SEED) {
   let state = seed;
   const rand = () => {
@@ -320,8 +339,7 @@ export function dispatch(
     selected: chosen?.worker.id ?? null,
     fastest: fastest?.worker.id ?? null,
     reason,
-    tieBreak:
-      'Opportunity: lowest weekly net; optional highest job net; then ETA, rating descending, member ID ascending. Emergency: ETA, rating, ID.',
+    tieBreak: policyRuleText(policy, job.emergency),
     timestamp: new Date(
       Date.UTC(2026, 7, 31) + job.requested * 60000 - 330 * 60000,
     ).toISOString(),
