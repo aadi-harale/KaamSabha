@@ -9,6 +9,8 @@ import {
   type AppEvent,
   type LedgerEntry,
   type CourtCase,
+  type AccountabilityRecord,
+  type CatchUpAllocation,
 } from './model';
 
 export interface ReadRepository<T> {
@@ -37,6 +39,13 @@ export interface LedgerRepository {
 export interface ChallengeRepository extends ReadRepository<CourtCase> {
   put(value: CourtCase): void;
 }
+export interface AccountabilityRepository
+  extends ReadRepository<AccountabilityRecord> {
+  put(value: AccountabilityRecord): void;
+}
+export interface CatchUpRepository extends ReadRepository<CatchUpAllocation> {
+  put(value: CatchUpAllocation): void;
+}
 export interface UnitOfWork {
   state: ApplicationState;
   jobs: JobRepository;
@@ -45,6 +54,8 @@ export interface UnitOfWork {
   events: EventRepository;
   ledger: LedgerRepository;
   challenges: ChallengeRepository;
+  accountability: AccountabilityRepository;
+  catchUps: CatchUpRepository;
 }
 export interface ApplicationRepository {
   read(): ApplicationState;
@@ -84,6 +95,8 @@ function unit(state: ApplicationState): UnitOfWork {
     state,
     jobs: collection(state.jobs),
     challenges: collection(state.challenges),
+    accountability: collection(state.accountability),
+    catchUps: collection(state.catchUps),
     snapshots: {
       all: () => freeze(snapshots.all()),
       get: (id) => freeze(snapshots.get(id)),
@@ -108,9 +121,35 @@ function unit(state: ApplicationState): UnitOfWork {
 }
 function decode(raw: string | null): ApplicationState {
   if (!raw) return emptyApplication();
-  const s = JSON.parse(raw) as ApplicationState;
+  const parsed = JSON.parse(raw) as Omit<
+    ApplicationState,
+    'schema' | 'accountability' | 'catchUps'
+  > & {
+    schema: 1 | 2 | 3;
+    accountability?: AccountabilityRecord[];
+    catchUps?: CatchUpAllocation[];
+  };
+  if (parsed.schema === 1) {
+    parsed.schema = 3;
+    parsed.accountability = [];
+    parsed.catchUps = [];
+    parsed.policies = parsed.policies.map((policy) => ({
+      ...policy,
+      votes: Object.fromEntries(
+        Object.entries(policy.votes).map(([memberId, value]) => [
+          memberId,
+          typeof value === 'string' ? { choice: value, reason: '' } : value,
+        ]),
+      ),
+      consultations: {},
+    }));
+  } else if (parsed.schema === 2) {
+    parsed.schema = 3;
+    parsed.catchUps = [];
+  }
+  const s = parsed as ApplicationState;
   if (
-    s.schema !== 1 ||
+    s.schema !== 3 ||
     !Number.isInteger(s.revision) ||
     !Number.isInteger(s.sequence) ||
     !s.session ||
@@ -123,6 +162,8 @@ function decode(raw: string | null): ApplicationState {
       'ledger',
       'events',
       'challenges',
+      'accountability',
+      'catchUps',
     ].every((k) => Array.isArray(s[k as keyof ApplicationState])) ||
     !s.policies.some(
       (p) => p.version === s.activeVersion && p.status === 'active',

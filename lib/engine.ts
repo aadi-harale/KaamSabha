@@ -63,7 +63,7 @@ export type Policy = {
   effectiveAt: string | null;
   constraints: { radius: number; sla: number; emergency: true };
   parameters: { floor: number; maxDelay: number; netPriority: boolean };
-  votes: Record<string, 'support' | 'oppose'>;
+  votes: Record<string, PolicyVote>;
   quorum: number;
   electorate: number;
   simulation: {
@@ -71,6 +71,11 @@ export type Policy = {
     proposed: Metrics;
     assumptions: Assumptions;
   } | null;
+};
+export type PolicyVote = {
+  choice: 'support' | 'oppose';
+  /** Empty for legacy/demo support votes; required for application dissent. */
+  reason: string;
 };
 export const constitution: Policy = {
   policyId: 'KMS-CONSTITUTION',
@@ -440,7 +445,13 @@ export function openVote(p: Policy): Policy {
     votes: Object.fromEntries(
       Array.from({ length: 8 }, (_, i) => [
         `W${String(i + 2).padStart(2, '0')}`,
-        i < 6 ? 'support' : 'oppose',
+        {
+          choice: i < 6 ? 'support' : 'oppose',
+          reason:
+            i < 6
+              ? ''
+              : 'The additional customer wait needs closer monitoring.',
+        },
       ]),
     ),
   };
@@ -449,6 +460,7 @@ export function vote(
   p: Policy,
   member: string,
   choice: 'support' | 'oppose',
+  reason = '',
 ): Policy {
   if (
     p.status !== 'voting' ||
@@ -457,10 +469,10 @@ export function vote(
   )
     throw new Error('Voting is closed or this member already voted.');
   const next = copy(p);
-  next.votes[member] = choice;
+  next.votes[member] = { choice, reason: reason.trim() };
   if (
     Object.keys(next.votes).length >= next.quorum &&
-    Object.values(next.votes).filter((v) => v === 'support').length >
+    Object.values(next.votes).filter((v) => v.choice === 'support').length >
       next.electorate / 2
   )
     next.status = 'approved';

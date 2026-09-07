@@ -99,8 +99,8 @@ describe('SIH26089 frozen golden vectors', () => {
       eligible: policy.electorate,
       quorum: policy.quorum,
       threshold: Math.floor(policy.electorate / 2) + 1,
-      support: values.filter((v) => v === 'support').length,
-      oppose: values.filter((v) => v === 'oppose').length,
+      support: values.filter((v) => v.choice === 'support').length,
+      oppose: values.filter((v) => v.choice === 'oppose').length,
       notVoted: policy.electorate - values.length,
       status: policy.status,
     }).toEqual({

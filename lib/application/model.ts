@@ -4,7 +4,9 @@ import {
   copy,
   dataset,
   type Job,
+  type Metrics,
   type Policy,
+  type PolicyVote,
   type Receipt,
   type Worker,
 } from '../engine';
@@ -25,7 +27,67 @@ export type Terms = {
   dividendBps: number;
   workerCancellationPenalty: number;
 };
-export type LivePolicy = Policy & { terms: Terms; historicalJobIds: string[] };
+export type PolicyConsultation = {
+  viewedAt: string;
+  basisVersion: number;
+  currentNet: number;
+  currentJobs: number;
+  proposedNet: number;
+  proposedJobs: number;
+};
+export type LivePolicy = Policy & {
+  terms: Terms;
+  historicalJobIds: string[];
+  consultations: Record<string, PolicyConsultation>;
+};
+export type MetricChange = {
+  lowestLivelihood: number;
+  averageEta: number;
+  fulfilledJobs: number;
+};
+export type AccountabilityRecord = {
+  id: string;
+  policyVersion: number;
+  comparisonVersion: number;
+  activatedAt: string;
+  windowSize: 20;
+  thresholdPercent: 25;
+  status: 'measuring' | 'measured' | 'revote-required';
+  basisJobIds: string[];
+  forecast: {
+    current: Metrics;
+    proposed: Metrics;
+    change: MetricChange;
+  };
+  actual: null | {
+    measuredAt: string;
+    current: Metrics;
+    delivered: Metrics;
+    change: MetricChange;
+    gap: MetricChange;
+    livelihoodDeviationPercent: number;
+    outcomes: {
+      jobId: string;
+      workerId: string | null;
+      eta: number | null;
+      net: number | null;
+    }[];
+  };
+};
+export type CatchUpAllocation = {
+  id: string;
+  policyVersion: number;
+  accountabilityId: string;
+  beneficiaryId: string;
+  amount: number;
+  opportunityGap: number;
+  availableReserveAtProposal: number;
+  cap: 500;
+  justification: string;
+  status: 'voting' | 'approved' | 'posted';
+  votes: Record<string, PolicyVote>;
+  postedAt: string | null;
+};
 export type WorkOrder = {
   id: string;
   job: Job;
@@ -100,7 +162,7 @@ export type CourtCase = {
   } | null;
 };
 export type ApplicationState = {
-  schema: 1;
+  schema: 3;
   revision: number;
   sequence: number;
   workers: Worker[];
@@ -112,12 +174,14 @@ export type ApplicationState = {
   events: AppEvent[];
   ledger: LedgerEntry[];
   challenges: CourtCase[];
+  accountability: AccountabilityRecord[];
+  catchUps: CatchUpAllocation[];
   session: { persona: Persona; memberId: string };
   rates: typeof assumptions;
 };
 export function emptyApplication(): ApplicationState {
   return {
-    schema: 1,
+    schema: 3,
     revision: 0,
     sequence: 0,
     workers: dataset().workers,
@@ -132,6 +196,7 @@ export function emptyApplication(): ApplicationState {
           workerCancellationPenalty: 100,
         },
         historicalJobIds: [],
+        consultations: {},
       },
     ],
     activeVersion: 2,
@@ -140,9 +205,14 @@ export function emptyApplication(): ApplicationState {
     events: [],
     ledger: [],
     challenges: [],
+    accountability: [],
+    catchUps: [],
     session: { persona: 'customer', memberId: 'W01' },
     rates: copy(assumptions),
   };
+}
+export function normalizeVote(value: PolicyVote | 'support' | 'oppose') {
+  return typeof value === 'string' ? { choice: value, reason: '' } : value;
 }
 export const rupees = (n: number) => Math.round(n * 100) / 100;
 export function canonical(value: unknown): string {

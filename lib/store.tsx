@@ -57,6 +57,17 @@ export const initialState = (): State => ({
   compared: false,
 });
 const seeded = dataset();
+function normalizePolicyVotes(policy: Policy): Policy {
+  return {
+    ...policy,
+    votes: Object.fromEntries(
+      Object.entries(policy.votes).map(([memberId, value]) => [
+        memberId,
+        typeof value === 'string' ? { choice: value, reason: '' } : value,
+      ]),
+    ),
+  };
+}
 function useAppState() {
   const [state, setState] = useState<State>(initialState),
     [ready, setReady] = useState(false),
@@ -72,7 +83,12 @@ function useAppState() {
             Array.isArray(parsed.appeals) &&
             parsed.rates
           )
-            setState(parsed);
+            setState({
+              ...parsed,
+              active: normalizePolicyVotes(parsed.active),
+              proposal: normalizePolicyVotes(parsed.proposal),
+              history: parsed.history.map(normalizePolicyVotes),
+            });
         }
       } catch {
         /* In-memory fallback. */

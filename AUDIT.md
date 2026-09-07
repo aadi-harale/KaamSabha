@@ -48,6 +48,10 @@ The real workspace will use separate storage and domain services. The guided vie
 | Persona switching and passed-over explanation | Working | All 12 members selectable; live job appeared for selected and eligible passed-over members. |
 | Operations counters and event history | Working | Counts derive from local jobs, settlements, cases and receipt candidates. |
 | Refresh persistence | Working | Jobs, wallet, policy v3 and closed case survived full navigation reload. |
+| Preserved dissent and informed voting | Working | Per-member impact review gates voting; opposing reasons remain attributed in version history. |
+| Promise-vs-delivered ledger | Working | Activation freezes forecast; a persisted 20-job outcome record computes actual change, gap and the 25% re-vote flag. |
+| Customer fairness disclosure | Working | Text reads the active policy's maximum extra wait and changed from 8 to 12 minutes during browser verification. |
+| Retroactive catch-up allocation | Working | Separate 9-member vote; amount bounded by opportunity gap, ₹500 cap and available reserve; balanced ledger posting verified. |
 
 No static placeholder counter or dead acceptance-path control remained after verification. Production-only requirements remain deferred below.
 
@@ -62,6 +66,8 @@ Operations “member coverage” means unique members present in candidate evide
 A correctly recorded customer-after-departure cancellation produces a confirmed replay. Its appropriate remedy is a recorded no-financial-change action followed by closure. Violation remedies post compensating ledger rows; original snapshots remain unchanged.
 
 The original judge journey is isolated under `/demo/*`; the standard route names point to the shared stateful application. The receipt exports rename `requested` to `requestedAtMinutesSince2026_08_31_IST`, matching the engine's minute-offset model without changing dispatch arithmetic.
+
+Policy activation accountability uses a 20-job deterministic measurement window for this one-session prototype. It is clearly labelled as simulated and stored separately from customer bookings and settled work. The same metric calculation is used for forecast and delivered comparison. A one-time catch-up can be proposed only after that window closes and only when the reserve can fund a positive, bounded amount.
 
 ## Deferred production flags
 

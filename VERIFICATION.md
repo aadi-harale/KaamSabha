@@ -4,7 +4,7 @@ Verified locally on Windows, 7 September 2026.
 
 ## Automated
 
-- 24 Vitest tests pass: skill/activity/availability/shift/radius/SLA filters, opportunity limits, emergency dispatch, net calculation, stable ties, reproducibility, snapshots, governance lifecycle, duplicate votes, booking interval conflicts, cancellation attribution, remedies and contradictory evidence.
+- 41 Vitest tests pass: skill/activity/availability/shift/radius/SLA filters, opportunity limits, emergency dispatch, net calculation, stable ties, reproducibility, snapshots, governance lifecycle, consent gating, preserved dissent, accountability measurement, bounded catch-up accounting, no-change proposal rejection, schema migration, duplicate votes, booking interval conflicts, cancellation attribution, remedies and contradictory evidence.
 - TypeScript check passes.
 - Application lint passes. Unchanged generated UI primitives and their mobile hook are excluded; see README.
 - Production build passes for all six entry points (root plus five product routes).
@@ -51,3 +51,16 @@ Verified in one uninterrupted browser session on 7 September 2026, followed by a
 Reload verification returned constitution v3, all three jobs, the ₹560 Ravi wallet, the closed case and the same counters. A separate browser session verified decline and redispatch: Ravi declined `KMS-LIVE-00001`, the event was retained and the same job was offered to Asha under v2. Browser console errors: none.
 
 Application and judge routes were checked for horizontal overflow at 320, 768, 1024 and 1440px: 24 checks, zero failures. New customer, worker and operations screenshots were inspected. A 320px navigation clipping issue and member-ID-only selector label were observed and fixed. Focus remained a solid 3px teal outline; reduced-motion media emulation matched.
+
+## Stretch-goal walkthrough
+
+Verified in one continuous browser session after the core walkthrough passed:
+
+1. A v3 ballot began with disabled vote buttons. Opening Meena Jadhav's own v2/v3 livelihood comparison enabled her vote; the service layer also rejects a vote without a stored consultation record.
+2. Seven support and two oppose votes activated v3. Priya Gaikwad's and Rahul Chavan's opposing reasons remained attributed under v3 after activation and navigation.
+3. The v3 activation forecast over 101 jobs promised +₹814 lowest livelihood and +0.85 minute average ETA. The next 20 deterministic jobs delivered +₹725 and +0.71 minute; gaps were ₹−90 and −0.14 minute. Lowest-livelihood deviation was 11%, below the 25% mandatory re-vote threshold. All 20 outcome rows were persisted.
+4. The customer fairness disclosure read 8 extra minutes under v2, 10 under v3, then 12 under v4, each directly from the active policy.
+5. After the v3 measurement closed, a separate catch-up record identified Priya Gaikwad's ₹1,327.60 opportunity gap. The amount resolved to ₹16.96 (shown as ₹17): the least of 10% of the gap, the ₹500 cap and ₹16.96 available reserve. A distinct 7/2/3 vote approved it. Posting added ₹16.96 to Priya's wallet and −₹16.96 to reserve, net zero across the two ledger rows; her displayed wallet became ₹18 including the prior ₹1 dividend.
+6. v4 changed the floor from ₹4,500 to ₹5,500 and maximum extra wait from 10 to 12 minutes. Before Asha Mane viewed her own projection, both vote buttons were disabled with an explicit instruction. Seven support and two oppose votes activated v4. Version history retained Suresh More's “Twelve extra minutes is too much for time-sensitive customers” and Priya Gaikwad's “Keep the ten-minute limit until delivered results justify more.” The persisted v4 forecast is +₹179 lowest livelihood and +0.84 minute average ETA.
+
+Full-page desktop and 390px mobile governance screenshots were inspected after the final fixes. Mobile width equalled its client width (390px), so there was no horizontal overflow. Browser console errors: none. Screenshots: `outputs/stretch-governance-desktop-final.png`, `outputs/stretch-governance-mobile-final.png`, and `outputs/stretch-customer-desktop.png`.

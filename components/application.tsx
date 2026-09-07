@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Clock, Scale, ShieldCheck, Users, Wrench } from 'lucide-react';
@@ -24,15 +24,20 @@ import {
   activatePolicy,
   adjudicateChallenge,
   cancelJob,
+  castCatchUpVote,
   castPolicyVote,
   closeChallenge,
+  completeAccountabilityWindow,
   completeWork,
   createBooking,
   declineOffer,
   openChallenge,
   openPolicyVote,
   projection,
+  postCatchUpAllocation,
   proposePolicy,
+  proposeCatchUpAllocation,
+  recordPolicyImpactView,
   recordArrival,
   remedyChallenge,
   replayChallenge,
@@ -45,6 +50,7 @@ import {
 import {
   type CourtCase,
   type DecisionSnapshot,
+  type LivePolicy,
   type Persona,
   type WorkOrder,
 } from '@/lib/application/model';
@@ -375,6 +381,9 @@ export function CustomerApplication() {
       'Ceiling fan wiring needs checking',
     ),
     [receipt, setReceipt] = useState<DecisionSnapshot | null>(null);
+  const active = state.policies.find(
+    (policy) => policy.version === state.activeVersion,
+  )!;
   const submit = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     void run((repo) =>
@@ -434,6 +443,11 @@ export function CustomerApplication() {
               <span>Illustrative one-hour visit</span>
               <strong>{money(prices[service])}</strong>
             </div>
+            <p className="fairness-disclosure">
+              Estimated wait may include up to{' '}
+              <strong>{active.parameters.maxDelay} extra minutes</strong> under
+              this cooperative’s member-voted fair-opportunity rule.
+            </p>
             <Button type="submit" disabled={!ready}>
               Create job and dispatch
             </Button>
@@ -699,70 +713,98 @@ export function WorkerApplication() {
     </AppShell>
   );
 }
+function PolicyProposalForm({ active }: { active: LivePolicy }) {
+  const { run } = useApplication();
+  const [floor, setFloor] = useState(active.parameters.floor + 1000),
+    [delay, setDelay] = useState(active.parameters.maxDelay + 2);
+  return (
+    <div className="live-panel">
+      <h2>Propose the next version</h2>
+      <div className="live-form-pair">
+        <label className="live-field">
+          <span>Weekly net floor</span>
+          <input
+            type="number"
+            value={floor}
+            onChange={(e) => setFloor(Number(e.target.value))}
+          />
+        </label>
+        <label className="live-field">
+          <span>Maximum extra ETA</span>
+          <input
+            type="number"
+            value={delay}
+            onChange={(e) => setDelay(Number(e.target.value))}
+          />
+        </label>
+      </div>
+      <Button
+        onClick={() =>
+          void run((repo) =>
+            proposePolicy(repo, {
+              floor,
+              maxDelay: delay,
+              netPriority: true,
+            }),
+          )
+        }
+      >
+        Propose v{active.version + 1}
+      </Button>
+    </div>
+  );
+}
 function GovernancePanel() {
   const { state, run } = useApplication();
   const active = state.policies.find((p) => p.version === state.activeVersion)!,
     proposal = state.policies.find((p) => p.version === state.proposalVersion);
-  const [floor, setFloor] = useState(active.parameters.floor + 1000),
-    [delay, setDelay] = useState(active.parameters.maxDelay + 2),
-    [voter, setVoter] = useState('W01');
+  const [voter, setVoter] = useState('W01'),
+    [catchUpVoter, setCatchUpVoter] = useState('W01'),
+    [dissentReason, setDissentReason] = useState(''),
+    [impactOpen, setImpactOpen] = useState(false);
+  const [currentProjection, proposedProjection] = useMemo(() => {
+    if (!proposal) return [null, null];
+    return [
+      projection(state, active.version).workers.find((w) => w.id === voter) ??
+        null,
+      projection(state, proposal.version).workers.find((w) => w.id === voter) ??
+        null,
+    ];
+  }, [state, active.version, proposal, voter]);
   const votes = proposal ? Object.values(proposal.votes) : [],
-    support = votes.filter((v) => v === 'support').length,
-    oppose = votes.filter((v) => v === 'oppose').length;
+    support = votes.filter((v) => v.choice === 'support').length,
+    oppose = votes.filter((v) => v.choice === 'oppose').length,
+    consultation = proposal?.consultations[voter],
+    voterName = workerName(state, voter),
+    reserveBalance = state.ledger
+      .filter((entry) => entry.kind === 'reserve')
+      .reduce((sum, entry) => sum + entry.amount, 0);
   const voteAndAdvance = (choice: 'support' | 'oppose') => {
     void run(async (repo) => {
-      await castPolicyVote(repo, voter, choice);
+      await castPolicyVote(repo, voter, choice, dissentReason);
       const next = state.workers.find(
         (w) => !proposal?.votes[w.id] && w.id !== voter,
       );
-      if (next) setVoter(next.id);
+      if (next) {
+        setVoter(next.id);
+        setImpactOpen(false);
+      }
+      setDissentReason('');
     });
   };
   return (
-    <section className="governance-live">
-      <div className="constitution-summary">
-        <h2>Active constitution v{active.version}</h2>
-        <p>
-          Eligible members below {money(active.parameters.floor)} can receive
-          work within +{active.parameters.maxDelay} ETA minutes. Hard skill,
-          schedule, radius and SLA checks run first.
-        </p>
-      </div>
-      {!proposal ? (
-        <div className="live-panel">
-          <h2>Propose the next version</h2>
-          <div className="live-form-pair">
-            <label className="live-field">
-              <span>Weekly net floor</span>
-              <input
-                type="number"
-                value={floor}
-                onChange={(e) => setFloor(Number(e.target.value))}
-              />
-            </label>
-            <label className="live-field">
-              <span>Maximum extra ETA</span>
-              <input
-                type="number"
-                value={delay}
-                onChange={(e) => setDelay(Number(e.target.value))}
-              />
-            </label>
-          </div>
-          <Button
-            onClick={() =>
-              void run((repo) =>
-                proposePolicy(repo, {
-                  floor,
-                  maxDelay: delay,
-                  netPriority: true,
-                }),
-              )
-            }
-          >
-            Propose v{active.version + 1}
-          </Button>
+    <>
+      <section className="governance-live">
+        <div className="constitution-summary">
+          <h2>Active constitution v{active.version}</h2>
+          <p>
+            Eligible members below {money(active.parameters.floor)} can receive
+            work within +{active.parameters.maxDelay} ETA minutes. Hard skill,
+            schedule, radius and SLA checks run first.
+          </p>
         </div>
+        {!proposal ? (
+          <PolicyProposalForm key={active.version} active={active} />
       ) : (
         <div className="live-panel">
           <div className="section-heading">
@@ -844,14 +886,75 @@ function GovernancePanel() {
                     values={state.workers
                       .filter((w) => !proposal.votes[w.id])
                       .map((w) => ({ value: w.id, label: w.name }))}
-                    onChange={setVoter}
+                    onChange={(memberId) => {
+                      setVoter(memberId);
+                      setImpactOpen(false);
+                      setDissentReason('');
+                    }}
                   />
+                  <details
+                    className="member-impact"
+                    open={impactOpen}
+                    onToggle={(event) => {
+                      const open = event.currentTarget.open;
+                      setImpactOpen(open);
+                      if (open && !consultation)
+                        void run((repo) =>
+                          recordPolicyImpactView(repo, voter),
+                        );
+                    }}
+                  >
+                    <summary>
+                      Who gains or gives up opportunity? Review {voterName}
+                    </summary>
+                    <dl>
+                      <div>
+                        <dt>Current v{active.version}</dt>
+                        <dd>
+                          {money(currentProjection?.net ?? 0)} /{' '}
+                          {currentProjection?.jobs ?? 0} jobs
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Proposed v{proposal.version}</dt>
+                        <dd>
+                          {money(proposedProjection?.net ?? 0)} /{' '}
+                          {proposedProjection?.jobs ?? 0} jobs
+                        </dd>
+                      </div>
+                    </dl>
+                    <p>
+                      This is {voterName}’s own projection over the same{' '}
+                      {proposal.historicalJobIds.length} jobs used by the policy
+                      twin.
+                    </p>
+                  </details>
+                  <p className="consent-status" id="vote-consent-status">
+                    {consultation
+                      ? `${voterName} reviewed this comparison. Voting is enabled.`
+                      : `Open the comparison above before recording ${voterName}’s vote.`}
+                  </p>
+                  <label className="live-field">
+                    <span>Reason if opposing (required and preserved)</span>
+                    <textarea
+                      maxLength={240}
+                      value={dissentReason}
+                      onChange={(event) => setDissentReason(event.target.value)}
+                      placeholder="State the trade-off this member cannot support"
+                    />
+                  </label>
                   <div className="button-row">
-                    <Button onClick={() => voteAndAdvance('support')}>
+                    <Button
+                      aria-describedby="vote-consent-status"
+                      disabled={!consultation}
+                      onClick={() => voteAndAdvance('support')}
+                    >
                       Support
                     </Button>
                     <Button
                       variant="outline"
+                      aria-describedby="vote-consent-status"
+                      disabled={!consultation || !dissentReason.trim()}
                       onClick={() => voteAndAdvance('oppose')}
                     >
                       Oppose
@@ -866,9 +969,262 @@ function GovernancePanel() {
               )}
             </div>
           )}
+          </div>
+        )}
+      </section>
+      <section className="policy-history" aria-labelledby="policy-history-title">
+        <div className="section-heading">
+          <div>
+            <h2 id="policy-history-title">Constitution record</h2>
+            <p>Votes, dissent and delivery evidence stay with each version.</p>
+          </div>
         </div>
-      )}
-    </section>
+        {[...state.policies]
+          .sort((a, b) => b.version - a.version)
+          .map((policy) => {
+            const dissents = Object.entries(policy.votes).filter(
+                ([, ballot]) => ballot.choice === 'oppose',
+              ),
+              accountability = state.accountability.find(
+                (record) => record.policyVersion === policy.version,
+              ),
+              catchUp = accountability
+                ? state.catchUps.find(
+                    (item) => item.accountabilityId === accountability.id,
+                  )
+                : undefined,
+              catchUpVotes = catchUp ? Object.values(catchUp.votes) : [],
+              catchUpSupport = catchUpVotes.filter(
+                (ballot) => ballot.choice === 'support',
+              ).length;
+            return (
+              <article className="policy-record" key={policy.version}>
+                <div className="policy-record-heading">
+                  <div>
+                    <strong>
+                      Constitution v{policy.version}: {policy.name}
+                    </strong>
+                    <span>
+                      {money(policy.parameters.floor)} floor / +
+                      {policy.parameters.maxDelay} minute limit
+                    </span>
+                  </div>
+                  <span className="stage">{policy.status}</span>
+                </div>
+                <div className="dissent-ledger">
+                  <h3>Preserved dissent</h3>
+                  {dissents.length ? (
+                    dissents.map(([memberId, ballot]) => (
+                      <p key={memberId}>
+                        <strong>{workerName(state, memberId)}:</strong>{' '}
+                        {ballot.reason || 'No reason was recorded in this legacy ballot.'}
+                      </p>
+                    ))
+                  ) : (
+                    <p>No opposing vote is recorded for this version.</p>
+                  )}
+                </div>
+                {accountability && (
+                  <div className="accountability-ledger">
+                    <div>
+                      <h3>Promise vs delivered</h3>
+                      <span className={`accountability-status ${accountability.status}`}>
+                        {accountability.status === 'measuring'
+                          ? '20-job window pending'
+                          : accountability.status === 'revote-required'
+                            ? 'Mandatory re-vote'
+                            : 'Within threshold'}
+                      </span>
+                    </div>
+                    <p className="metric-basis">
+                      Forecast basis: {accountability.basisJobIds.length} jobs,
+                      v{accountability.comparisonVersion} compared with v
+                      {accountability.policyVersion}. Delivery basis adds the
+                      next 20 deterministic measurement jobs.
+                    </p>
+                    <dl>
+                      <div>
+                        <dt>Lowest livelihood</dt>
+                        <dd>
+                          Forecast {money(accountability.forecast.change.lowestLivelihood)}
+                          {accountability.actual && (
+                            <> / Actual {money(accountability.actual.change.lowestLivelihood)} / Gap {money(accountability.actual.gap.lowestLivelihood)}</>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Average ETA</dt>
+                        <dd>
+                          Forecast {accountability.forecast.change.averageEta > 0 ? '+' : ''}
+                          {accountability.forecast.change.averageEta} min
+                          {accountability.actual && (
+                            <> / Actual {accountability.actual.change.averageEta > 0 ? '+' : ''}{accountability.actual.change.averageEta} / Gap {accountability.actual.gap.averageEta} min</>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                    {accountability.actual && (
+                      <p>
+                        Lowest-livelihood deviation:{' '}
+                        <strong>{accountability.actual.livelihoodDeviationPercent}%</strong>.
+                        A deviation above {accountability.thresholdPercent}% forces
+                        a new member vote.
+                      </p>
+                    )}
+                    {accountability.status === 'measuring' &&
+                      policy.version === state.activeVersion && (
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            void run((repo) =>
+                              completeAccountabilityWindow(repo, accountability.id),
+                            )
+                          }
+                        >
+                          Run next 20-job measurement
+                        </Button>
+                      )}
+                    {accountability.actual && !catchUp && (
+                      <div className="catch-up-entry">
+                        <Button
+                          variant="outline"
+                          disabled={reserveBalance <= 0}
+                          onClick={() =>
+                            void run((repo) =>
+                              proposeCatchUpAllocation(repo, accountability.id),
+                            )
+                          }
+                        >
+                          Open bounded catch-up vote
+                        </Button>
+                        <small>
+                          Available cooperative reserve: {money(reserveBalance)}.
+                          The allocation cannot exceed this balance.
+                        </small>
+                      </div>
+                    )}
+                    {catchUp && (
+                      <div className="catch-up-ledger">
+                        <div className="policy-record-heading">
+                          <div>
+                            <h3>One-time catch-up allocation</h3>
+                            <strong>
+                              {workerName(state, catchUp.beneficiaryId)} /{' '}
+                              {money(catchUp.amount)}
+                            </strong>
+                          </div>
+                          <span className="stage">{catchUp.status}</span>
+                        </div>
+                        <p>{catchUp.justification}</p>
+                        <p className="metric-basis">
+                          Bound: the least of 10% of the{' '}
+                          {money(catchUp.opportunityGap)} opportunity gap,{' '}
+                          {money(catchUp.cap)}, and the{' '}
+                          {money(catchUp.availableReserveAtProposal)} reserve
+                          available when proposed.
+                        </p>
+                        <div className="vote-tally catch-up-tally">
+                          <span>
+                            <strong>{catchUpSupport}</strong> support
+                          </span>
+                          <span>
+                            <strong>
+                              {
+                                catchUpVotes.filter(
+                                  (ballot) => ballot.choice === 'oppose',
+                                ).length
+                              }
+                            </strong>{' '}
+                            oppose
+                          </span>
+                          <span>
+                            <strong>{12 - catchUpVotes.length}</strong> not voted
+                          </span>
+                        </div>
+                        {catchUp.status === 'voting' && (
+                          <>
+                            <Choice
+                              label="Vote on catch-up as member"
+                              value={catchUpVoter}
+                              values={state.workers
+                                .filter((worker) => !catchUp.votes[worker.id])
+                                .map((worker) => ({
+                                  value: worker.id,
+                                  label: worker.name,
+                                }))}
+                              onChange={setCatchUpVoter}
+                            />
+                            <div className="button-row">
+                              <Button
+                                onClick={() =>
+                                  void run(async (repo) => {
+                                    await castCatchUpVote(
+                                      repo,
+                                      catchUp.id,
+                                      catchUpVoter,
+                                      'support',
+                                    );
+                                    const next = state.workers.find(
+                                      (worker) =>
+                                        !catchUp.votes[worker.id] &&
+                                        worker.id !== catchUpVoter,
+                                    );
+                                    if (next) setCatchUpVoter(next.id);
+                                  })
+                                }
+                              >
+                                Support catch-up
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() =>
+                                  void run(async (repo) => {
+                                    await castCatchUpVote(
+                                      repo,
+                                      catchUp.id,
+                                      catchUpVoter,
+                                      'oppose',
+                                    );
+                                    const next = state.workers.find(
+                                      (worker) =>
+                                        !catchUp.votes[worker.id] &&
+                                        worker.id !== catchUpVoter,
+                                    );
+                                    if (next) setCatchUpVoter(next.id);
+                                  })
+                                }
+                              >
+                                Oppose catch-up
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                        {catchUp.status === 'approved' && (
+                          <Button
+                            onClick={() =>
+                              void run((repo) =>
+                                postCatchUpAllocation(repo, catchUp.id),
+                              )
+                            }
+                          >
+                            Post approved allocation
+                          </Button>
+                        )}
+                        {catchUp.status === 'posted' && (
+                          <p className="posted-allocation">
+                            Posted to the member wallet and debited from the
+                            cooperative reserve.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+      </section>
+    </>
   );
 }
 function Court({ item }: { item: CourtCase }) {

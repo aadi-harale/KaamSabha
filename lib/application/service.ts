@@ -7,7 +7,9 @@ import {
   simulate,
   simulateProposal,
   vote,
+  SEED,
   type Job,
+  type Metrics,
   type Policy,
 } from '../engine';
 import { dispatchBooking } from '../booking';
@@ -17,7 +19,9 @@ import {
   type Actor,
   type AppEvent,
   type ApplicationState,
+  type AccountabilityRecord,
   type CancellationInput,
+  type CatchUpAllocation,
   type CourtCase,
   type DecisionPayload,
   type DecisionSnapshot,
@@ -39,6 +43,19 @@ const customer: Actor = { role: 'customer', id: 'CUSTOMER-01' };
 const operator: Actor = { role: 'operations', id: 'OPS-01' };
 const now = () => new Date().toISOString();
 const activePolicy = (u: UnitOfWork) => u.policies.get(u.state.activeVersion);
+function comparisonJobs(u: UnitOfWork) {
+  return [
+    ...dataset().jobs,
+    ...u.state.jobs.map((x) => ({ ...x.job, status: 'requested' as const })),
+  ];
+}
+function metricChange(current: Metrics, proposed: Metrics) {
+  return {
+    lowestLivelihood: rupees(proposed.lowest - current.lowest),
+    averageEta: rupees(proposed.avgEta - current.avgEta),
+    fulfilledJobs: proposed.fulfilled - current.fulfilled,
+  };
+}
 function id(u: UnitOfWork, prefix: string) {
   u.state.sequence++;
   return `${prefix}-${String(u.state.sequence).padStart(5, '0')}`;
@@ -480,7 +497,14 @@ export async function proposePolicy(
   return repo.transaction((u) => {
     if (u.state.proposalVersion)
       throw new Error('Finish the current proposal before drafting another.');
-    const active = activePolicy(u),
+    const active = activePolicy(u);
+    if (
+      active.parameters.floor === parameters.floor &&
+      active.parameters.maxDelay === parameters.maxDelay &&
+      active.parameters.netPriority === parameters.netPriority
+    )
+      throw new Error('Change at least one dispatch parameter before proposing.');
+    const
       draft = {
         ...propose(active),
         parameters,
@@ -491,6 +515,7 @@ export async function proposePolicy(
           ...u.state.jobs.map((j) => j.id),
         ],
       } as LivePolicy;
+    draft.consultations = {};
     u.policies.put(draft);
     u.state.proposalVersion = draft.version;
     event(
@@ -507,10 +532,7 @@ export const simulatePolicy = (repo: ApplicationRepository) =>
     if (!u.state.proposalVersion) throw new Error('Propose a policy first.');
     const current = activePolicy(u),
       proposal = u.policies.get(u.state.proposalVersion);
-    const jobs = [
-      ...dataset().jobs,
-      ...u.state.jobs.map((x) => ({ ...x.job, status: 'requested' as const })),
-    ];
+    const jobs = comparisonJobs(u);
     const simulated = simulateProposal(
       proposal,
       current,
@@ -544,21 +566,71 @@ export const openPolicyVote = (repo: ApplicationRepository) =>
       'Member ballot opened with no votes recorded.',
     );
   });
+export const recordPolicyImpactView = (
+  repo: ApplicationRepository,
+  memberId: string,
+) =>
+  repo.transaction((u) => {
+    if (!u.state.proposalVersion) throw new Error('No proposal is open.');
+    const proposal = u.policies.get(u.state.proposalVersion);
+    if (!['voting', 'approved'].includes(proposal.status))
+      throw new Error('Open the member ballot before reviewing impacts.');
+    if (proposal.consultations[memberId]) return;
+    const current = activePolicy(u),
+      jobs = comparisonJobs(u),
+      currentMember = simulate(
+        jobs,
+        dataset().workers,
+        current,
+        u.state.rates,
+      ).workers.find((worker) => worker.id === memberId),
+      proposedMember = simulate(
+        jobs,
+        dataset().workers,
+        proposal,
+        u.state.rates,
+      ).workers.find((worker) => worker.id === memberId);
+    if (!currentMember || !proposedMember)
+      throw new Error('This member is outside the current electorate.');
+    proposal.consultations[memberId] = {
+      viewedAt: now(),
+      basisVersion: current.version,
+      currentNet: currentMember.net,
+      currentJobs: currentMember.jobs,
+      proposedNet: proposedMember.net,
+      proposedJobs: proposedMember.jobs,
+    };
+    u.policies.put(proposal);
+    event(
+      u,
+      { role: 'worker', id: memberId },
+      proposal.policyId,
+      'policy-impact-viewed',
+      `${memberId} reviewed their v${current.version} to v${proposal.version} livelihood projection.`,
+    );
+  });
 export const castPolicyVote = (
   repo: ApplicationRepository,
   memberId: string,
   choice: 'support' | 'oppose',
+  reason = '',
 ) =>
   repo.transaction((u) => {
     if (!u.state.proposalVersion) throw new Error('No vote is open.');
     const proposal = u.policies.get(u.state.proposalVersion);
-    u.policies.put(vote(proposal, memberId, choice) as LivePolicy);
+    if (!proposal.consultations[memberId])
+      throw new Error(
+        'Review this member’s projected outcome before recording their vote.',
+      );
+    if (choice === 'oppose' && !reason.trim())
+      throw new Error('Record the member’s reason for opposing this version.');
+    u.policies.put(vote(proposal, memberId, choice, reason) as LivePolicy);
     event(
       u,
       { role: 'worker', id: memberId },
       proposal.policyId,
       'vote-cast',
-      `${memberId} voted ${choice}.`,
+      `${memberId} voted ${choice}${reason.trim() ? `: ${reason.trim()}` : '.'}`,
     );
   });
 export const activatePolicy = (repo: ApplicationRepository) =>
@@ -566,13 +638,37 @@ export const activatePolicy = (repo: ApplicationRepository) =>
     if (!u.state.proposalVersion)
       throw new Error('No approved proposal exists.');
     const version = u.state.proposalVersion,
-      active = activate(u.policies.get(version), now()) as LivePolicy;
+      previous = activePolicy(u),
+      activatedAt = now(),
+      active = activate(u.policies.get(version), activatedAt) as LivePolicy;
+    if (!active.simulation)
+      throw new Error('The approved simulation forecast is missing.');
     u.policies.put(
       activePolicy(u).status === 'active'
         ? { ...activePolicy(u), status: 'expired' }
         : activePolicy(u),
     );
     u.policies.put(active);
+    const accountability: AccountabilityRecord = {
+      id: id(u, 'ACC'),
+      policyVersion: active.version,
+      comparisonVersion: previous.version,
+      activatedAt,
+      windowSize: 20,
+      thresholdPercent: 25,
+      status: 'measuring',
+      basisJobIds: [...active.historicalJobIds],
+      forecast: {
+        current: copy(active.simulation.current),
+        proposed: copy(active.simulation.proposed),
+        change: metricChange(
+          active.simulation.current,
+          active.simulation.proposed,
+        ),
+      },
+      actual: null,
+    };
+    u.accountability.put(accountability);
     u.state.activeVersion = version;
     u.state.proposalVersion = null;
     event(
@@ -581,6 +677,262 @@ export const activatePolicy = (repo: ApplicationRepository) =>
       active.policyId,
       'policy-activated',
       `Policy v${version} is active for subsequent dispatches.`,
+    );
+  });
+
+function measurementJobs(version: number): Job[] {
+  return dataset(SEED + version * 997)
+    .jobs.slice(0, 20)
+    .map((job, index) => ({
+      ...job,
+      id: `KMS-MEASURE-v${version}-${String(index + 1).padStart(2, '0')}`,
+      customer: 'Accountability measurement window',
+      requested: 6 * 1440 + 540 + index * 26,
+      status: 'requested' as const,
+    }));
+}
+function jobsById(u: UnitOfWork, jobIds: string[]) {
+  const source = new Map([
+    ...dataset().jobs.map((job) => [job.id, job] as const),
+    ...u.state.jobs.map((order) => [order.id, order.job] as const),
+  ]);
+  return jobIds.map((jobId) => {
+    const job = source.get(jobId);
+    if (!job) throw new Error(`Forecast basis job ${jobId} is unavailable.`);
+    return { ...job, status: 'requested' as const };
+  });
+}
+export const completeAccountabilityWindow = (
+  repo: ApplicationRepository,
+  accountabilityId: string,
+) =>
+  repo.transaction((u) => {
+    const record = u.accountability.get(accountabilityId);
+    if (record.status !== 'measuring')
+      throw new Error('This measurement window is already closed.');
+    const policy = u.policies.get(record.policyVersion),
+      comparison = u.policies.get(record.comparisonVersion),
+      basis = jobsById(u, record.basisJobIds),
+      window = measurementJobs(policy.version),
+      jobs = [...basis, ...window],
+      current = simulate(
+        jobs,
+        dataset().workers,
+        comparison,
+        u.state.rates,
+      ),
+      delivered = simulate(
+        jobs,
+        dataset().workers,
+        policy,
+        u.state.rates,
+      ),
+      change = metricChange(current.metrics, delivered.metrics),
+      gap = {
+        lowestLivelihood: rupees(
+          change.lowestLivelihood - record.forecast.change.lowestLivelihood,
+        ),
+        averageEta: rupees(
+          change.averageEta - record.forecast.change.averageEta,
+        ),
+        fulfilledJobs:
+          change.fulfilledJobs - record.forecast.change.fulfilledJobs,
+      },
+      deviation = rupees(
+        (Math.abs(gap.lowestLivelihood) /
+          Math.max(Math.abs(record.forecast.change.lowestLivelihood), 1)) *
+          100,
+      );
+    record.actual = {
+      measuredAt: now(),
+      current: copy(current.metrics),
+      delivered: copy(delivered.metrics),
+      change,
+      gap,
+      livelihoodDeviationPercent: deviation,
+      outcomes: window.map((job) => {
+        const receipt = delivered.receipts.find((item) => item.job.id === job.id),
+          candidate = receipt?.candidates.find(
+            (item) => item.worker.id === receipt.selected,
+          );
+        return {
+          jobId: job.id,
+          workerId: receipt?.selected ?? null,
+          eta: candidate?.eta ?? null,
+          net: candidate?.net ?? null,
+        };
+      }),
+    };
+    record.status =
+      deviation > record.thresholdPercent ? 'revote-required' : 'measured';
+    u.accountability.put(record);
+    event(
+      u,
+      operator,
+      policy.policyId,
+      'policy-outcome-measured',
+      `Policy v${policy.version} measured over 20 deterministic jobs; lowest-livelihood deviation ${deviation}%.`,
+    );
+  });
+
+export const proposeCatchUpAllocation = (
+  repo: ApplicationRepository,
+  accountabilityId: string,
+) =>
+  repo.transaction((u) => {
+    const accountability = u.accountability.get(accountabilityId);
+    if (!accountability.actual)
+      throw new Error('Close the 20-job measurement window first.');
+    if (
+      u.catchUps
+        .all()
+        .some((item) => item.accountabilityId === accountabilityId)
+    )
+      throw new Error('This measurement period already has an allocation.');
+    const policy = u.policies.get(accountability.policyVersion),
+      comparison = u.policies.get(accountability.comparisonVersion),
+      jobs = [
+        ...jobsById(u, accountability.basisJobIds),
+        ...measurementJobs(policy.version),
+      ],
+      before = simulate(
+        jobs,
+        dataset().workers,
+        comparison,
+        u.state.rates,
+      ).workers,
+      after = simulate(
+        jobs,
+        dataset().workers,
+        policy,
+        u.state.rates,
+      ).workers,
+      opportunity = after
+        .map((worker) => ({
+          worker,
+          gain: rupees(
+            worker.net -
+              (before.find((candidate) => candidate.id === worker.id)?.net ?? 0),
+          ),
+        }))
+        .sort(
+          (a, b) =>
+            b.gain - a.gain || a.worker.id.localeCompare(b.worker.id),
+        )[0],
+      reserve = rupees(
+        u.ledger
+          .all()
+          .filter((entry) => entry.kind === 'reserve')
+          .reduce((sum, entry) => sum + entry.amount, 0),
+      );
+    if (!opportunity || opportunity.gain <= 0)
+      throw new Error('This period shows no bounded opportunity loss to remedy.');
+    const amount = rupees(
+      Math.min(500, reserve, opportunity.gain * 0.1),
+    );
+    if (amount <= 0)
+      throw new Error('No cooperative reserve is available for a catch-up vote.');
+    const value: CatchUpAllocation = {
+      id: id(u, 'CATCH'),
+      policyVersion: policy.version,
+      accountabilityId,
+      beneficiaryId: opportunity.worker.id,
+      amount,
+      opportunityGap: opportunity.gain,
+      availableReserveAtProposal: reserve,
+      cap: 500,
+      justification: `${opportunity.worker.name} had ${moneyForEvent(opportunity.gain)} more livelihood under v${policy.version} than v${comparison.version} over the closed measurement basis.`,
+      status: 'voting',
+      votes: {},
+      postedAt: null,
+    };
+    u.catchUps.put(value);
+    event(
+      u,
+      operator,
+      value.id,
+      'catch-up-proposed',
+      `${moneyForEvent(amount)} reserve-backed catch-up proposed for ${opportunity.worker.name}.`,
+    );
+  });
+
+const moneyForEvent = (amount: number) =>
+  `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+export const castCatchUpVote = (
+  repo: ApplicationRepository,
+  allocationId: string,
+  memberId: string,
+  choice: 'support' | 'oppose',
+) =>
+  repo.transaction((u) => {
+    const item = u.catchUps.get(allocationId);
+    if (
+      item.status !== 'voting' ||
+      !/^W(0[1-9]|1[0-2])$/.test(memberId) ||
+      item.votes[memberId]
+    )
+      throw new Error('Voting is closed or this member already voted.');
+    item.votes[memberId] = { choice, reason: '' };
+    const votes = Object.values(item.votes),
+      support = votes.filter((entry) => entry.choice === 'support').length;
+    if (votes.length >= 9 && support >= 7) item.status = 'approved';
+    u.catchUps.put(item);
+    event(
+      u,
+      { role: 'worker', id: memberId },
+      item.id,
+      'catch-up-vote-cast',
+      `${memberId} voted ${choice} on the bounded catch-up.`,
+    );
+  });
+
+export const postCatchUpAllocation = (
+  repo: ApplicationRepository,
+  allocationId: string,
+) =>
+  repo.transaction((u) => {
+    const item = u.catchUps.get(allocationId);
+    if (item.status !== 'approved')
+      throw new Error('Member approval is required before posting catch-up.');
+    const reserve = rupees(
+      u.ledger
+        .all()
+        .filter((entry) => entry.kind === 'reserve')
+        .reduce((sum, entry) => sum + entry.amount, 0),
+    );
+    if (reserve < item.amount)
+      throw new Error('The approved amount exceeds the available reserve.');
+    const at = now();
+    u.ledger.append({
+      id: id(u, 'LED'),
+      jobId: item.id,
+      workerId: item.beneficiaryId,
+      kind: 'remedy',
+      amount: item.amount,
+      at,
+      decisionId: item.id,
+      detail: `One-time catch-up approved for policy v${item.policyVersion}.`,
+    });
+    u.ledger.append({
+      id: id(u, 'LED'),
+      jobId: item.id,
+      workerId: null,
+      kind: 'reserve',
+      amount: -item.amount,
+      at,
+      decisionId: item.id,
+      detail: 'Cooperative reserve funded the bounded catch-up allocation.',
+    });
+    item.status = 'posted';
+    item.postedAt = at;
+    u.catchUps.put(item);
+    event(
+      u,
+      operator,
+      item.id,
+      'catch-up-posted',
+      `${moneyForEvent(item.amount)} posted to ${item.beneficiaryId}; reserve debited equally.`,
     );
   });
 export const openChallenge = (

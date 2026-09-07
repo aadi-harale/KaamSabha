@@ -30,6 +30,7 @@ npm run build
 - **Counterfactual policy twin:** replays identical workers and jobs under current and proposed policies, calculating both customer costs and worker outcomes.
 - **Decision receipt and Replay Court:** snapshots preserve policy, candidate state, costs and event evidence. Replay confirms compliant decisions, corrects a seeded cancellation violation or routes incomplete evidence to a committee.
 - **Net livelihood:** payout minus round-trip travel, consumables, unpaid travel time and applicable cancellation loss. Default assumptions are ₹6/km and ₹1.50/minute, editable under Demo controls. These are illustrative operating assumptions, not official wage rates or cash-pay deductions.
+- **Accountability after activation:** each policy keeps its forecast, measures the same metrics after a deterministic 20-job window, shows the gap, and requires a new vote when lowest-livelihood delivery deviates by more than 25%.
 
 ## Architecture
 
@@ -84,7 +85,9 @@ The standard routes share one device-local repository. Create a booking in `/cus
 
 A worker may decline an offer, which records the decline and dispatches the same job again while excluding that member. Passed-over eligible members see the local job under “Why was I skipped?” Customer or worker cancellation records frozen evidence. A member opens a challenge from that decision; Operations replays the frozen inputs, records the verdict, applies the appropriate ledger/no-change remedy, then closes the case without changing the original snapshot.
 
-In `/governance`, propose parameters, replay the same historical and local jobs, open an empty ballot, cast distinct member votes, and activate only after quorum 9 and threshold 7. New bookings freeze the new version. Worker projections show the previous and active policy outcomes side by side; settled wallet entries never change retroactively.
+In `/governance`, propose parameters, replay the same historical and local jobs, open an empty ballot, and activate only after quorum 9 and threshold 7. Each member must first open their own current-versus-proposed livelihood projection. Opposing votes require a reason; that dissent remains attributed in policy history. New bookings freeze the new version. Worker projections show the previous and active policy outcomes side by side; settled wallet entries never change retroactively.
+
+Activation persists the original forecast in a separate accountability record. “Run next 20-job measurement” evaluates 20 deterministic future requests on top of the frozen forecast basis, records each assignment outcome, and compares delivered lowest livelihood and average ETA with the promise. A deviation above 25% is visibly marked for mandatory re-vote. After a closed measurement window, members may open one bounded catch-up vote. The allocation is capped by 10% of the measured opportunity gap, ₹500, and the cooperative reserve available at proposal time; posting creates equal and opposite member/reserve ledger entries.
 
 ## Limits
 

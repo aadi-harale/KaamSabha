@@ -196,8 +196,12 @@ export function Governance() {
     const [floor, maxDelay, netPriority] = values[v];
     amend({ name: v, parameters: { floor, maxDelay, netPriority } });
   };
-  const supports = Object.values(p.votes).filter((v) => v === 'support').length,
-    opposes = Object.values(p.votes).filter((v) => v === 'oppose').length;
+  const supports = Object.values(p.votes).filter(
+      (v) => v.choice === 'support',
+    ).length,
+    opposes = Object.values(p.votes).filter(
+      (v) => v.choice === 'oppose',
+    ).length;
   return (
     <Shell>
       <PageHeading
