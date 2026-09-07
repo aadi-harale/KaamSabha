@@ -1,283 +1,157 @@
-# KAAMSABHA implementation report
+# KAAMSABHA — what we built, how it works, and why it helps
+
+## What KAAMSABHA is
+
+KAAMSABHA is a worker-owned household-services cooperative application with a reliable device-local demonstration mode and a committed Supabase production schema. Customers, worker-members, and cooperative operations use one shared state model while the original deterministic presentation remains isolated at `/demo`.
+
+Its central claim is executable: workers can inspect, test, vote on, change, and challenge the rules that allocate their work. The member constitution can change dispatch priorities, but it cannot remove the Worker Protection Floor.
 
 ## What we built
 
-KAAMSABHA began as a guided, mostly seeded Smart India Hackathon presentation. We turned it into a coherent, stateful, device-local application while preserving the original deterministic judge demo under `/demo`.
+### A real job lifecycle
 
-The application now demonstrates the complete thesis:
+A customer can create a persisted booking with a service, locality, time, scope, and emergency flag. The system checks skill, active membership, availability, schedule, service radius, and SLA before applying the active fair-opportunity rule.
 
-> Worker-members can write, test, vote on, execute, explain and challenge the rules that decide who earns.
+The selected worker receives the same record and can accept or safely decline it. Accepted work progresses through a calculated road route, shared travel progress, arrival, start-code verification, work, completion-code verification, settlement, or cancellation. Each valid transition creates an event; invalid transitions are rejected by the command layer.
 
-The finished prototype includes three connected personas:
+The customer view includes a real Leaflet map using OpenStreetMap tiles. Dispatch mode shows the service request, up to four eligible members, the selected member, distance, ETA, the SLA area, pan and zoom controls. Travel mode asks one `RouteService` for OSRM road geometry, distance, and duration, then saves that result so customer and worker see the same route and progress. If routing fails it draws a dashed direct path labelled approximate; if tiles fail it renders a deterministic accessible service-area diagram.
 
-- **Customer:** creates a real local service booking, receives a deterministic worker assignment, inspects the decision receipt and can cancel the job.
-- **Worker-member:** receives the same booking, accepts or declines it, progresses through the work lifecycle, sees earnings and dividends, checks why another member was selected, and challenges decisions.
-- **Cooperative Operations:** monitors record-derived counters, reviews the event history, governs dispatch policy and resolves challenges through Replay Court.
+### The Worker Protection Floor
 
-The original `/demo` experience remains isolated and deterministic. Its seeded state cannot overwrite or distort the stateful application.
+These protections are executable rules above the member-voted constitution:
+
+- **Cooperative price minimums.** Each service has a customer total, worker service pay, welfare contribution, operations contribution, and minimum worker pay. A booking below the minimum or with a non-reconciling split is rejected.
+- **No reverse auction or paid rank.** The policy validator rejects cheapest-bid and paid-priority proposals.
+- **Scope lock and change consent.** The booked scope is visible to the worker. Added labour or material becomes payable only after the customer explicitly approves a change order. Declining the extra leaves the original job and worker record intact.
+- **Safe refusal.** Unsafe, out-of-scope, schedule-conflict, and service-area declines record zero opportunity penalty. A declined offer is explicitly different from a no-show after acceptance.
+- **Cancellation protection.** A customer cancellation after travel starts creates no worker penalty and posts ₹70 travel compensation to the worker wallet.
+- **Rating firewall.** A one-star rating is recorded and routed to cooperative review, but it cannot automatically restrict or deactivate the worker.
+- **Workability signals.** Workers can record structured scope and safety signals. Sensitive safety concerns appear only as an operations review count, not as public accusations.
+- **Deterministic settlement.** Completion posts worker pay, member dividends, cooperative reserve, and welfare entries. A material-charge dispute does not remove already settled labour.
+- **Workload safety.** Each member can set an available-until time, minimum rest gap, maximum jobs per day, heavy-service limit, and an unavailable period. These checks block an offer before livelihood ranking, explain the exclusion in the receipt, and never count it as a refusal or penalty.
+- **Opportunity access.** The system counts an opportunity only when a real selected offer passed every hard and workload constraint. Weekly worker summaries show estimated livelihood, valid opportunities, and accepted jobs. Declines keep zero ranking and eligibility penalty. Catch-up need considers both livelihood gap and valid access without inventing earnings.
+
+### Pay before commitment
+
+Before accepting, a worker sees the booked scope, service pay, frozen cost estimate, estimated net contribution, and confirmation that no ranking fee, boost fee, or hidden deduction exists.
+
+For the verified electrician job, the customer total was ₹850: ₹760 service pay, ₹40 welfare, and ₹50 operations. Ravi’s frozen estimated costs were ₹87 and his estimated net was ₹673.
+
+### Cooperative Constitution and Policy Twin
+
+The governance lifecycle is real application logic:
+
+**Propose → validate protections → simulate → review personal impact → vote → activate**
+
+The Counterfactual Policy Twin runs the same jobs and workers under the active and proposed policies. It shows the exact comparison basis and changes in lowest livelihood, average ETA, and fulfilled jobs.
+
+A ballot starts empty. Nine members must participate and at least seven must support it. Each member must inspect their own projected impact before voting. Opposing members must state a reason, and that dissent remains attached to the policy record.
+
+Activation expires the earlier constitution and makes the approved version the input for every later dispatch. In the verified browser session, v3 changed the fair-opportunity floor from ₹3,500 to ₹4,500 and the allowed extra ETA from 8 to 10 minutes. The next booking’s frozen receipt recorded constitution v3.
+
+The Worker Protection Floor rejected a paid-priority proposal in the interface before it could reach simulation or voting.
+
+### Decision receipts and Replay Court
+
+Dispatch, cancellation, and penalty decisions create frozen `DecisionSnapshot` records. A dispatch receipt retains all candidates, eligibility failures, ETA and net calculations, selected member, tie-break explanation, policy version, and cost assumptions.
+
+The customer sees a deliberately shorter assignment receipt: the assigned member, one expected-arrival value, and confirmation that skill, availability, and the service promise were checked. Candidate rankings, rejected-member details, livelihood estimates, hash metadata, and raw JSON stay in the worker and audit experience.
+
+Snapshots use SHA-256 over canonical payload data and link to the preceding snapshot hash. This makes local records reproducible and detects record changes. It is described as prototype integrity, not server-grade tamper proofing.
+
+Replay Court follows distinct states:
+
+**Open → replayed → confirmed / violation / human review → remedied → closed**
+
+Replay uses the inputs frozen at decision time rather than today’s worker state or constitution. Confirmed decisions record a no-change remedy; violations can add a compensating ledger entry while preserving the original snapshot.
+
+The verified cancellation receipt recorded: customer cancelled while en route, worker charge ₹0, worker compensation ₹70. Replay reproduced the consequence and the case was closed.
+
+### Settlement, welfare, and operations
+
+The payment settlement ledger uses deterministic journal entries and makes no escrow claim. The verified completed job included an approved ₹200 change order and settled ₹873 to Ravi. When the customer questioned the approved ₹80 material portion, the settlement moved to `partially-disputed` while Ravi’s ₹873 stayed posted.
+
+Operations shows live counters, event history, Replay Court, twelve verified member records, welfare representation, an illustrative demand outlook, welfare totals, private review counts, invoices, and settlement status. The demand display is derived from 100 synthetic historical jobs and explicitly makes no real-world accuracy claim.
+
+## How it works technically
+
+The application uses React 19, TypeScript, Vite/Vinext, Leaflet, OpenStreetMap, OSRM routing, and Supabase's JavaScript client. Local fallback needs no credentials. Connected mode has server-only demo-role claiming, anonymous-session support, normalized migrations, RLS, private Storage policy, and scoped Realtime publication; hosted configuration cannot be activated until project keys are provided through environment variables.
+
+The verified demonstration state lives in one versioned `localStorage` envelope behind strict repository interfaces. Jobs, policies, snapshots, events, ledgers, challenges, accountability records, member profiles, change orders, feedback, workability signals, settlements, opportunities, OTP records, evidence metadata, notifications, routes, locale, and onboarding state are accessed inside atomic units of work.
+
+Commands own state changes. Components call commands; they do not manufacture successful states. Transactions serialize concurrent work, compare revisions before commit, and prevent duplicate settlement.
+
+Schema 1–5 workspaces migrate to schema 6. Migration adds verification, route, evidence, notification, locale, and onboarding fields without modifying nested frozen snapshot payloads, so existing decision hashes remain valid.
+
+The Supabase contract is reproducible under `supabase/migrations`. It defines cooperatives, profiles, customers, workers, services, workload limits, jobs, append-only events, hashed OTPs, evidence, change orders, notifications, opportunities, policies, votes, simulations, immutable snapshots, challenges, replay results, settlements, ratings, forecasts, indexes, RLS helpers, a private `job-evidence` bucket, Realtime publication, twelve stable workers, and 100 deterministic historical jobs. Secrets are represented only by names in `.env.example`.
+
+The customer intake assistant calls a server route that requests schema-checked JSON from a configured AI provider. It cannot dispatch, price, penalize, or decide an appeal. When the key or provider is unavailable, the interface shows that failure and supplies an editable deterministic draft so booking continues.
+
+The deterministic seed remains `26089`, with 12 workers, 100 historical jobs, 5 services, and 10 illustrative Pune localities. The original `/demo` uses separate storage while sharing the dispatch engine, so application actions cannot weaken the judge presentation.
 
 ## Why we built it this way
 
-A static prototype can describe cooperative governance, but it cannot prove that workers actually control the dispatch rules. The implementation therefore focuses on cause and effect:
-
-1. A customer creates a booking.
-2. The active constitution assigns a worker.
-3. Members vote to change the constitution.
-4. Later bookings use the newly approved parameters.
-5. Every consequential decision retains the inputs needed to explain or replay it.
-
-This makes the product's central claim visible and testable. Judges can see that governance changes executable behavior instead of merely changing labels on a dashboard.
-
-The scope remains intentionally device-local for the hackathon demonstration. Authentication, cross-device synchronization, KYC, messaging, production payments and shared databases would add deployment complexity without improving the core proof for this demo.
-
-## How the application state works
-
-All application data is stored in one versioned `localStorage` envelope. The envelope contains:
-
-- jobs and their lifecycle stages;
-- policies, proposals, consultations and votes;
-- frozen decision snapshots;
-- append-only events;
-- worker, dividend, reserve, penalty and remedy ledger entries;
-- Replay Court cases;
-- policy accountability measurements; and
-- catch-up allocations.
-
-Storage access is hidden behind repository interfaces such as `JobRepository`, `PolicyRepository`, `SnapshotRepository`, `LedgerRepository`, `ChallengeRepository`, `AccountabilityRepository` and `CatchUpRepository`.
-
-This separation matters because application commands do not depend directly on browser storage. A future PostgreSQL or API-backed adapter can implement the same interfaces without rewriting dispatch, governance or court logic.
-
-Each command runs as an atomic unit of work. A completion cannot save the job while failing to save its earnings or events. Transactions are serialized, revisions detect concurrent changes, and duplicate settlement attempts are rejected.
-
-Older schema 1 and schema 2 envelopes migrate to schema 3. Migration adds the newer governance records without rewriting frozen decision snapshots or invalidating their hashes.
-
-## How deterministic dispatch works
-
-Dispatch first applies hard eligibility rules:
-
-- required skill;
-- active membership;
-- current availability;
-- shift and schedule fit;
-- service radius; and
-- customer SLA.
-
-Emergency jobs always prioritize the fastest eligible worker. For other jobs, the active constitution may prefer an eligible member below the approved weekly net-livelihood floor, provided the extra ETA stays inside the member-approved limit.
-
-The final deterministic order is:
-
-1. lowest weekly net livelihood;
-2. optional highest net contribution from the offered job;
-3. ETA;
-4. rating, descending; and
-5. stable member ID.
-
-There are no random choices. Identical workers, jobs, policy and cost assumptions always produce the same result.
-
-When a worker declines, the same job is dispatched again with that member excluded. The decline, second dispatch and new receipt are all retained.
-
-## How the real job lifecycle works
-
-The implemented lifecycle is:
-
-**Booking → eligibility → dispatch → offer → accept or decline → redispatch when needed → en route → arrival → work start → completion or cancellation → settlement → event history**
-
-Every transition validates the current stage and assigned worker. Invalid jumps, such as completing an unaccepted job, are rejected.
-
-Completion reads the frozen dispatch costs and posts separate ledger entries. The current illustrative settlement rule uses:
-
-- a 5% cooperative levy on payout;
-- 50% of that levy as distributable surplus;
-- an equal dividend across the 12 active members; and
-- the remainder as cooperative reserve.
-
-These percentages are prototype assumptions, not official wage or payment rules. They are explicit so every displayed amount can be reconstructed.
-
-Settled wallet entries never change retroactively when a policy changes. Worker pages separately show a counterfactual projection under the new constitution.
-
-## How the Cooperative Constitution works
-
-The governance lifecycle is:
-
-**Propose → simulate → review member impact → vote → activate**
-
-A proposal edits executable dispatch parameters, including the weekly livelihood floor and maximum additional ETA. A no-change proposal is rejected.
-
-The Counterfactual Policy Twin replays the same jobs and the same 12 workers under the current and proposed policies. It compares:
-
-- lowest member livelihood;
-- average ETA;
-- fulfilled jobs; and
-- related customer and worker outcomes.
-
-The comparison basis is displayed explicitly so a judge knows which policy versions and how many jobs produced the figures.
-
-The ballot begins empty. It requires nine participating members and at least seven supporting votes. Each member can vote once.
-
-Activation expires the prior policy, makes the approved version active, and causes every subsequent booking to freeze the new version and parameters in its receipt.
-
-## Informed voting and preserved dissent
-
-Before a member can vote, they must open their own current-versus-proposed livelihood comparison. Both vote buttons remain disabled until that consultation is recorded. The service layer also rejects attempts to bypass the interface.
-
-An opposing vote requires a written reason. The reason is stored with that member's vote and remains visible in policy history after activation.
-
-This improves the cooperative model in two ways:
-
-- members make decisions after seeing their own likely outcome; and
-- majority approval does not erase minority concerns.
-
-During verification, constitution v4 was approved 7 support, 2 oppose and 3 not voted. The preserved dissent included concerns about the 12-minute customer wait allowance.
-
-## Promise-versus-delivered accountability
-
-Policy simulation is a forecast, not proof that the policy will deliver the same result after activation. We therefore added a separate accountability record.
-
-At activation, the system freezes:
-
-- the comparison policy version;
-- the activated policy version;
-- the original job basis;
-- current and proposed metrics; and
-- the forecasted changes.
-
-The prototype then supports a deterministic 20-job measurement window. It adds 20 future synthetic jobs to the frozen basis, records their assignment outcomes, recalculates the same metrics and compares actual change with the original forecast.
-
-For verified v3:
-
-| Metric | Forecast | Actual | Gap |
-| --- | ---: | ---: | ---: |
-| Lowest livelihood change | +₹814.20 | +₹724.60 | −₹89.60 |
-| Average ETA change | +0.85 min | +0.71 min | −0.14 min |
-
-The lowest-livelihood deviation was 11%. The defined threshold is 25%; exceeding it marks the policy for mandatory re-vote.
-
-This helps members hold a policy accountable to what was promised during the campaign for approval.
-
-## Customer fairness disclosure
-
-The customer booking page states how much additional wait the cooperative's fair-opportunity rule may permit. The value comes directly from the active constitution rather than hardcoded copy.
-
-During the verified session, it changed from 8 minutes under v2, to 10 minutes under v3, and then to 12 minutes under v4.
-
-This gives customers a concise, factual explanation of the trade-off between fastest possible dispatch and fairer access to work.
-
-## Bounded catch-up allocation
-
-After a measurement window closes, members may propose one compensatory allocation for the member who gained the most opportunity under the new rule relative to the old rule.
-
-The amount is the smallest of:
-
-- 10% of the measured opportunity gap;
-- ₹500; and
-- the cooperative reserve available when proposed.
-
-The allocation has its own ballot with the same nine-member quorum and seven-vote approval requirement. Once approved, posting creates equal and opposite ledger rows: a member credit and a cooperative reserve debit.
-
-In the verified run:
-
-- Priya Gaikwad's measured opportunity gap was ₹1,327.60;
-- the available reserve was ₹16.96;
-- members approved the allocation 7–2–3;
-- Priya received ₹16.96; and
-- the reserve received a matching −₹16.96 entry.
-
-The two entries total zero, so the system does not invent money.
-
-## DecisionSnapshot receipts
-
-Every consequential dispatch, cancellation and penalty creates a frozen `DecisionSnapshot` containing:
-
-- the job and policy version;
-- candidate workers and eligibility failures;
-- selected worker;
-- ETA and cost calculation;
-- tie-break explanation;
-- cancellation evidence when applicable;
-- recorded outcome; and
-- the preceding snapshot hash.
-
-Each snapshot has a SHA-256 digest over a canonical representation of its payload. Snapshots form a previous-hash chain beginning at `GENESIS`.
-
-This provides useful prototype integrity and reproducibility. Because the complete chain remains in editable browser storage, it is not presented as production-grade tamper evidence.
-
-## Replay Court
-
-The challenge lifecycle is:
-
-**Open → replay frozen inputs → record verdict → apply remedy → close**
-
-Replay uses the inputs stored at decision time rather than current workers or the latest constitution. It can produce:
-
-- **Confirmed:** the recorded decision is reproduced;
-- **Violation:** replay produces a different consequence; or
-- **Human review:** the frozen evidence is incomplete or its integrity check fails.
-
-A violation adds a compensating ledger entry while preserving the original decision. A confirmed result records a no-change remedy. Human-review cases remain explicit instead of being silently guessed.
-
-## Operations and traceability
-
-Operations counters are calculated from application records rather than static seed values. They include local bookings, completed services, open challenges, members represented in dispatch evidence and stored events.
-
-Every counter therefore changes as the judge performs the walkthrough. The event register connects booking, dispatch, work, governance, consultation, voting, measurement, challenge and remedy actions in one continuous history.
-
-## Design approach
-
-The interface follows the repository's `AGENTS.md` standards and uses a cooperative register metaphor rather than a generic card dashboard.
-
-The visual system uses:
-
-- white record surfaces;
-- a cool register background;
-- dark ink for primary text;
-- teal for cooperative actions and verified state;
-- slate for secondary explanations; and
-- amber only for warnings and mandatory review.
-
-The named worker comparison remains the main visual emphasis. Policy records, ballots and ledgers use borders and divisions because they communicate real record structure, not as decoration.
-
-The application was inspected at desktop and mobile widths. Navigation, forms, policy records, receipts and long accountability sections remain usable without horizontal overflow. Keyboard focus is visible, reduced-motion preferences are respected, and copy uses plain, action-oriented language.
-
-## How this helps the hackathon submission
-
-The build gives judges several forms of proof in one continuous session:
-
-- **Technical proof:** deterministic rules, repository boundaries, atomic persistence, schema migration and executable state transitions.
-- **Product proof:** customer, worker and operator actions share the same records.
-- **Governance proof:** approved parameters directly alter later dispatches.
-- **Fairness proof:** every selected and rejected worker can be explained from frozen inputs.
-- **Accountability proof:** the cooperative compares policy promises with delivered results.
-- **Democratic proof:** individual impact must be viewed and dissent remains visible.
-- **Financial proof:** settlements, remedies and catch-up allocations reconcile through ledger entries.
-- **Demo reliability:** refresh preserves the application while `/demo` remains a separate deterministic fallback.
-
-This moves KAAMSABHA from a presentation about cooperative algorithms to a working governance runtime that demonstrates who controls the rules, how those rules affect livelihoods, and how members can contest failures.
-
-## Verified results
-
-The final repository passed:
-
-- 41 Vitest tests across four test files;
-- TypeScript type checking;
-- application lint;
-- the Vinext production build for all application and isolated demo routes;
-- a continuous browser walkthrough;
-- desktop and mobile visual inspection;
-- 320px and 390px horizontal-overflow checks; and
-- browser console inspection with no errors.
-
-Evidence and exact walkthrough values are also recorded in `VERIFICATION.md`. Current implementation boundaries are recorded in `AGENT_STATE.md`, and the before/after route classification is recorded in `AUDIT.md`.
-
-## Run locally
+A static dashboard could claim that a cooperative is fair, but it could not prove who controls dispatch or what happens when rules change. This implementation makes the claim visible through cause and effect:
+
+1. A customer creates a real job.
+2. The active constitution assigns an eligible member.
+3. The worker sees scope and money before accepting.
+4. Protection rules constrain cancellation, ratings, scope changes, and settlement.
+5. Members simulate and approve a different allocation rule.
+6. A later booking freezes the new policy version.
+7. Workers see their projected livelihood change under that version.
+8. Any consequential decision can be inspected and replayed from frozen evidence.
+
+The explicit local fallback keeps the complete hackathon story reliable without hiding network failure. The committed database and security contract shows how the same product moves to shared deployment once its credentials are supplied and migrations are applied.
+
+## How it helps
+
+- **Workers** can understand offers before accepting, decline unsafe work without hidden ranking harm, keep undisputed pay, and challenge decisions with evidence.
+- **Customers** see a clear price split, approve added scope, understand the fair-wait rule, and receive a traceable invoice and assignment receipt.
+- **The cooperative** can prove that member votes alter executable dispatch, preserve dissent, review sensitive concerns privately, track welfare contributions, and audit every action.
+- **Judges** can follow one continuous narrative instead of visiting disconnected mock screens. Every important value carries forward and survives refresh.
+- **Future engineers** can replace browser storage with an API or database by implementing the repository contracts while retaining the tested domain commands.
+
+## Verified walkthrough results
+
+| Step                   | Verified result                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| First booking          | `KMS-LIVE-00001`, electrician in Kharadi, assigned Ravi under v2                                                       |
+| Price                  | ₹850 total = ₹760 worker service pay + ₹40 welfare + ₹50 operations                                                    |
+| Worker offer           | ₹87 frozen estimated costs; ₹673 estimated net                                                                         |
+| Scope change           | ₹120 labour + ₹80 material approved by customer                                                                        |
+| Completion             | ₹673 completed-work net; ₹2 dividend shown; ₹675 wallet total                                                          |
+| Opportunity access     | Ravi showed 1 valid opportunity and 1 accepted job; the offer survived every eligibility and workload check            |
+| Cancellation           | `KMS-LIVE-00029` assigned Asha; customer cancelled en route; ₹0 penalty and ₹70 compensation                           |
+| Replay Court           | Frozen decision replayed, confirmed, remedied with no financial change, and closed                                     |
+| Policy simulation      | Same 102 jobs and 12 workers; lowest livelihood ₹3,732 → ₹4,546; ETA 14.88 → 15.73 minutes; 102 jobs fulfilled in both |
+| Vote and activation    | Nine support votes met quorum; constitution v3 activated                                                               |
+| Subsequent dispatch    | `KMS-LIVE-00069` / receipt `DEC-00072` selected Asha and froze constitution v3                                         |
+| Live worker projection | Ravi: v2 ₹12,426 / 17 jobs → v3 ₹9,954 / 13; Asha: v2 ₹7,317 / 10 → v3 ₹6,132 / 9                                    |
+| Operations counters    | 3 local bookings, 1 completed service, 0 open decisions, 12/12 member coverage, 41 traceable events                   |
+| Refresh                | v3, three jobs, ₹675 Ravi wallet, closed challenge, opportunity records, and workload settings persisted               |
+| Expanded live booking  | `KMS-LIVE-00075` assigned Ravi under v3 with ₹673 frozen estimated net                                                  |
+| Road travel            | OSRM returned one saved 1.7 km route with a 3-minute road ETA; customer and worker used the same progress record       |
+| Work verification      | Start code `475153` unlocked work; a separate completion code unlocked settlement; reuse was rejected by the domain    |
+| Expanded settlement    | Ravi's wallet moved from ₹675 to ₹1,350: ₹1,346 completed-work net and ₹4 dividends                                    |
+| Expanded refresh       | The completed job, route, used codes, v3 receipt, wallet and Fair Work totals remained after reload                    |
+
+## Verification completed
+
+- 65 Vitest tests passed across seven files, including frozen golden vectors, OTP lifecycle checks, route fallback checks, customer/audit map visibility checks, workload checks, and opportunity checks.
+- TypeScript type checking, Oxlint, and the production build passed.
+- The production customer view showed no horizontal overflow at 320, 768, 1024, or 1440 pixels. The comparison map also passed 375, 390, and 430 pixels; the worker workload form passed at 375 pixels.
+- Desktop and mobile map screenshots were captured and visually inspected. Map height is 300 pixels on mobile and 330 pixels on desktop.
+- Browser console errors: none.
+
+## Run it
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open `http://localhost:3000/app` for the stateful application or `http://localhost:3000/demo` for the isolated judge presentation.
-
-Run the verification commands with:
+Open `http://localhost:3000/app` for the stateful application and `http://localhost:3000/demo` for the isolated judge journey.
 
 ```sh
 npm test
@@ -285,3 +159,5 @@ npm run typecheck
 npm run lint
 npm run build
 ```
+
+Production authentication, KYC, cross-device synchronization, messaging, production payments, live GPS, and field-trained demand forecasting remain outside this device-local build. Road routing is implemented through OSRM with an explicit approximate fallback.

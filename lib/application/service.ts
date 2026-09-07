@@ -14,6 +14,17 @@ import {
 } from '../engine';
 import { dispatchBooking } from '../booking';
 import {
+  cancellationProtection,
+  canSettleChangeOrder,
+  opportunityNeedScore,
+  priceBands,
+  ratingProtection,
+  refusalConsequence,
+  validatePrice,
+  validateProtectionIntent,
+  workloadSafetyReason,
+} from '../protections';
+import {
   digest,
   rupees,
   type Actor,
@@ -28,16 +39,25 @@ import {
   type JobStage,
   type LivePolicy,
   type Persona,
+  type PriceBreakdown,
+  type ProtectionIntent,
+  type RefusalReason,
   type WorkOrder,
+  type JobEvidence,
+  type OtpType,
 } from './model';
 import type { ApplicationRepository, UnitOfWork } from './repositories';
+import { presentReceiptMap } from '../map';
+import { fetchRoute } from './route-service';
 
 export type NewBooking = {
   service: Job['category'];
   zone: number;
   requested: number;
   requirement: string;
-  payout: number;
+  payout?: number;
+  pricing?: PriceBreakdown;
+  emergency?: boolean;
 };
 const customer: Actor = { role: 'customer', id: 'CUSTOMER-01' };
 const operator: Actor = { role: 'operations', id: 'OPS-01' };
@@ -100,10 +120,43 @@ function bookedRecords(u: UnitOfWork, except?: string) {
       receipt: u.snapshots.get(x.receiptIds.at(-1)!).receipt!,
     }));
 }
-function workersForDispatch(u: UnitOfWork, declined: string[]) {
-  return u.state.workers.map((w) =>
-    declined.includes(w.id) ? { ...w, available: false } : w,
-  );
+function workersForDispatch(u: UnitOfWork, job: Job, declined: string[]) {
+  const blocked = new Map<string, string>();
+  const workers = u.state.workers.map((worker) => {
+    const profile = u.members.get(worker.id);
+    const sameDay = u.jobs
+      .all()
+      .filter(
+        (order) =>
+          order.id !== job.id &&
+          order.workerId === worker.id &&
+          order.stage !== 'cancelled' &&
+          Math.floor(order.job.requested / 1440) ===
+            Math.floor(job.requested / 1440),
+      );
+    const prior = sameDay
+      .filter((order) => order.job.requested <= job.requested)
+      .sort((a, b) => b.job.requested - a.job.requested)[0];
+    const reason = workloadSafetyReason({
+      requestedMinute: job.requested,
+      availableUntil: profile.workload.availableUntil,
+      minimumRestGap: profile.workload.minimumRestGap,
+      maximumJobsToday: profile.workload.maximumJobsToday,
+      jobsToday: sameDay.length,
+      heavyService: ['Home cleaning', 'Caregiving'].includes(job.category),
+      heavyJobsToday: sameDay.filter((order) =>
+        ['Home cleaning', 'Caregiving'].includes(order.job.category),
+      ).length,
+      heavyServiceLimit: profile.workload.heavyServiceLimit,
+      lastJobEnd: prior ? prior.job.requested + prior.job.duration : null,
+      unavailablePeriods: profile.workload.unavailablePeriods,
+    });
+    if (reason) blocked.set(worker.id, reason);
+    return declined.includes(worker.id) || reason
+      ? { ...worker, available: false }
+      : worker;
+  });
+  return { workers, blocked };
 }
 async function assign(
   u: UnitOfWork,
@@ -113,13 +166,24 @@ async function assign(
   actor: Actor,
 ) {
   const policy = activePolicy(u);
+  const workload = workersForDispatch(u, job, declined);
   const receipt = dispatchBooking(
     job,
-    workersForDispatch(u, declined),
+    workload.workers,
     bookedRecords(u, job.id),
     policy,
     u.state.rates,
   );
+  receipt.candidates = receipt.candidates.map((candidate) => {
+    const reason = workload.blocked.get(candidate.worker.id);
+    if (!reason) return candidate;
+    return {
+      ...candidate,
+      failed: candidate.failed.map((failure) =>
+        failure === 'Unavailable' ? `Workload safety: ${reason}` : failure,
+      ),
+    };
+  });
   const decision = await snapshot(u, {
     jobId: job.id,
     kind: 'dispatch',
@@ -144,6 +208,21 @@ async function assign(
       : 'No eligible worker.',
     decision.at,
   );
+  if (receipt.selected)
+    u.opportunities.put({
+      id: id(u, 'OPP'),
+      jobId: job.id,
+      decisionId: decision.id,
+      workerId: receipt.selected,
+      valid: true,
+      outcome: 'offered',
+      at: decision.at,
+    });
+  if (receipt.selected)
+    u.notifications.put({
+      id: id(u, 'NTF'), recipient: { role: 'worker', id: receipt.selected },
+      messageKey: 'NEW_OFFER', params: { jobId: job.id }, createdAt: decision.at, readAt: null,
+    });
   return { receipt, decision, dispatchId };
 }
 export async function createBooking(
@@ -158,18 +237,19 @@ export async function createBooking(
   )
     throw new Error('Enter a valid service request, locality and time.');
   return repo.transaction(async (u) => {
+    const pricing = validatePrice(input.pricing ?? priceBands[input.service]);
     const jobId = id(u, 'KMS-LIVE'),
       createdAt = now();
     const job: Job = {
       id: jobId,
       category: input.service,
-      customer: 'Local customer',
+      customer: u.state.session.customerName,
       zone: input.zone,
-      payout: input.payout,
+      payout: pricing.workerServicePay,
       duration: 60,
       requested: input.requested,
       sla: 35,
-      emergency: false,
+      emergency: input.emergency ?? false,
       consumables: 45,
       cancellationLoss: 0,
       status: 'requested',
@@ -197,8 +277,16 @@ export async function createBooking(
       dispatchId: assigned.dispatchId,
       acceptedAt: null,
       departedAt: null,
+      arrivedAt: null,
+      workStartedAt: null,
       completedAt: null,
       cancellationId: null,
+      pricing,
+      refusals: [],
+      settlementId: null,
+      emergency: input.emergency ?? false,
+      route: null,
+      travelProgress: 0,
       createdAt,
     };
     u.jobs.put(order);
@@ -210,8 +298,10 @@ const transitions: Record<JobStage, JobStage[]> = {
   unassigned: ['cancelled'],
   accepted: ['en-route', 'cancelled'],
   'en-route': ['arrived', 'cancelled'],
-  arrived: ['working', 'cancelled'],
-  working: ['completed', 'cancelled'],
+  arrived: ['start-verification', 'working', 'cancelled'],
+  'start-verification': ['working', 'cancelled'],
+  working: ['completion-verification', 'completed', 'cancelled'],
+  'completion-verification': ['completed', 'cancelled'],
   completed: [],
   cancelled: [],
 };
@@ -230,6 +320,11 @@ function move(
   job.stage = next;
   if (next === 'accepted') job.acceptedAt = now();
   if (next === 'en-route') job.departedAt = now();
+  if (next === 'arrived') {
+    job.arrivedAt = now();
+    job.travelProgress = 1;
+  }
+  if (next === 'working') job.workStartedAt = now();
   if (next === 'completed') {
     job.completedAt = now();
     job.job.status = 'completed';
@@ -243,9 +338,24 @@ export const acceptOffer = (
   jobId: string,
   workerId: string,
 ) =>
-  repo.transaction((u) =>
-    move(u, jobId, workerId, 'accepted', 'Worker accepted the offer.'),
-  );
+  repo.transaction((u) => {
+    const order = move(
+      u,
+      jobId,
+      workerId,
+      'accepted',
+      'Worker accepted the offer.',
+    );
+    const opportunity = u.opportunities
+      .all()
+      .filter((item) => item.jobId === jobId && item.workerId === workerId)
+      .at(-1);
+    if (opportunity) {
+      opportunity.outcome = 'accepted';
+      u.opportunities.put(opportunity);
+    }
+    return order;
+  });
 export const startTravel = (
   repo: ApplicationRepository,
   jobId: string,
@@ -254,6 +364,61 @@ export const startTravel = (
   repo.transaction((u) =>
     move(u, jobId, workerId, 'en-route', 'Worker started travelling.'),
   );
+export async function startTravelWithRoute(
+  repo: ApplicationRepository,
+  jobId: string,
+  workerId: string,
+) {
+  const state = repo.read();
+  const order = state.jobs.find((item) => item.id === jobId);
+  const receipt = state.snapshots.find(
+    (item) => item.id === order?.receiptIds.at(-1),
+  )?.receipt;
+  if (!order || !receipt) throw new Error('The frozen dispatch route is unavailable.');
+  const map = presentReceiptMap(receipt);
+  const origin = map.points.find((point) => point.id === workerId);
+  const destination = map.points.find((point) => point.kind === 'customer');
+  if (!origin || !destination) throw new Error('Route endpoints are unavailable.');
+  const route = await fetchRoute(origin, destination);
+  return repo.transaction((u) => {
+    const value = move(u, jobId, workerId, 'en-route', 'Worker started travelling; one shared route was recorded.');
+    value.route = route;
+    value.travelProgress = 0;
+    u.jobs.put(value);
+    event(
+      u,
+      { role: 'worker', id: workerId },
+      jobId,
+      'route-recorded',
+      `${route.provider}; ${route.distanceMeters} m; ${route.durationSeconds} s; approximate ${route.isApproximate}.`,
+    );
+    u.notifications.put({ id: id(u, 'NTF'), recipient: customer, messageKey: 'WORKER_TRAVELLING', params: { jobId }, createdAt: now(), readAt: null });
+    return value;
+  });
+}
+
+export const advanceTravel = (
+  repo: ApplicationRepository,
+  jobId: string,
+  workerId: string,
+) =>
+  repo.transaction((u) => {
+    const value = u.jobs.get(jobId);
+    if (value.workerId !== workerId || value.stage !== 'en-route')
+      throw new Error('Travel progress can update only for your active route.');
+    const current = value.travelProgress ?? 0;
+    value.travelProgress = Math.min(1, current < 0.34 ? 0.34 : current < 0.67 ? 0.67 : 1);
+    if (value.travelProgress === 1) {
+      value.stage = 'arrived';
+      value.arrivedAt = now();
+      event(u, { role: 'worker', id: workerId }, jobId, 'arrived', 'Worker arrived at the service address.');
+      u.notifications.put({ id: id(u, 'NTF'), recipient: customer, messageKey: 'WORKER_ARRIVED', params: { jobId }, createdAt: now(), readAt: null });
+    } else {
+      event(u, { role: 'worker', id: workerId }, jobId, 'travel-progress', `Simulated demo travel is ${Math.round(value.travelProgress * 100)}% complete.`);
+    }
+    u.jobs.put(value);
+    return value;
+  });
 export const recordArrival = (
   repo: ApplicationRepository,
   jobId: string,
@@ -276,22 +441,128 @@ export const startWork = (
   repo.transaction((u) =>
     move(u, jobId, workerId, 'working', 'Worker started the service.'),
   );
+
+function randomSixDigitCode() {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return String(100000 + (values[0] % 900000));
+}
+
+export async function requestJobOtp(
+  repo: ApplicationRepository,
+  jobId: string,
+  workerId: string,
+  type: OtpType,
+) {
+  let code = randomSixDigitCode();
+  const priorCodes = repo.read().otps.filter((item) => item.jobId === jobId).map((item) => item.customerCode);
+  while (priorCodes.includes(code)) code = randomSixDigitCode();
+  const codeHash = await digest({ jobId, type, code });
+  await repo.transaction((u) => {
+    const order = u.jobs.get(jobId);
+    const expected = type === 'start' ? 'arrived' : 'working';
+    const next = type === 'start' ? 'start-verification' : 'completion-verification';
+    if (order.workerId !== workerId || order.stage !== expected)
+      throw new Error(`The ${type} code cannot be requested from the ${order.stage} state.`);
+    for (const existing of u.otps.all().filter((item) => item.jobId === jobId && item.type === type && !item.usedAt)) {
+      existing.invalidatedAt = now();
+      u.otps.put(existing);
+    }
+    move(u, jobId, workerId, next, `${type === 'start' ? 'Start' : 'Completion'} code requested.`);
+    const issuedAt = now();
+    u.otps.put({
+      id: id(u, 'OTP'), jobId, type, codeHash, customerCode: code, issuedAt,
+      expiresAt: new Date(Date.parse(issuedAt) + 5 * 60_000).toISOString(),
+      attemptCount: 0, usedAt: null, invalidatedAt: null,
+    });
+    u.notifications.put({
+      id: id(u, 'NTF'), recipient: customer,
+      messageKey: type === 'start' ? 'START_OTP_ISSUED' : 'COMPLETION_OTP_ISSUED',
+      params: { jobId, workerId }, createdAt: issuedAt, readAt: null,
+    });
+  });
+  return code;
+}
+
+export async function verifyJobOtp(
+  repo: ApplicationRepository,
+  jobId: string,
+  workerId: string,
+  type: OtpType,
+  code: string,
+) {
+  const codeHash = await digest({ jobId, type, code: code.trim() });
+  const verificationError = await repo.transaction((u) => {
+    const order = u.jobs.get(jobId);
+    const expected = type === 'start' ? 'start-verification' : 'completion-verification';
+    if (order.workerId !== workerId || order.stage !== expected)
+      throw new Error(`This ${type} code does not match the current job state.`);
+    const otp = u.otps.all().filter((item) => item.jobId === jobId && item.type === type).at(-1);
+    if (!otp || otp.invalidatedAt) return 'Ask the customer for a new code.';
+    if (otp.usedAt) return 'This code was already used. Ask for a new code.';
+    if (Date.parse(otp.expiresAt) < Date.now()) return 'The code expired. Ask the customer for a new code.';
+    if (otp.attemptCount >= 5) return 'Too many attempts. Ask the customer for a new code.';
+    otp.attemptCount += 1;
+    if (otp.codeHash !== codeHash) {
+      u.otps.put(otp);
+      return 'That code is incorrect. Check the six digits with the customer.';
+    }
+    otp.usedAt = now();
+    u.otps.put(otp);
+    event(u, { role: 'worker', id: workerId }, jobId, `${type}-otp-verified`, `${type === 'start' ? 'Start' : 'Completion'} code verified.`);
+    if (type === 'start') move(u, jobId, workerId, 'working', 'Start code verified; work started.');
+    return null;
+  });
+  if (verificationError) throw new Error(verificationError);
+  if (type === 'completion') return completeWork(repo, jobId, workerId);
+}
+
+export async function addJobEvidence(
+  repo: ApplicationRepository,
+  input: Omit<JobEvidence, 'id' | 'createdAt'>,
+) {
+  if (!input.mimeType.startsWith('image/') || input.size <= 0 || input.size > 2_000_000)
+    throw new Error('Use a valid compressed image smaller than 2 MB.');
+  return repo.transaction((u) => {
+    const order = u.jobs.get(input.jobId);
+    if (input.uploader.role === 'worker' && order.workerId !== input.uploader.id)
+      throw new Error('Only the assigned member can add work proof.');
+    if (input.uploader.role === 'customer' && input.type !== 'customer-reference')
+      throw new Error('Customer uploads are saved as reference evidence.');
+    const value: JobEvidence = { ...input, id: id(u, 'EVD'), createdAt: now() };
+    u.evidence.put(value);
+    event(u, input.uploader, input.jobId, 'evidence-added', `${input.type} evidence added: ${input.caption || 'No caption'}.`);
+    return value;
+  });
+}
 export async function declineOffer(
   repo: ApplicationRepository,
   jobId: string,
   workerId: string,
+  reason: RefusalReason = 'other',
 ) {
   return repo.transaction(async (u) => {
     const order = u.jobs.get(jobId);
     if (order.stage !== 'offered' || order.workerId !== workerId)
       throw new Error('Only the member holding this offer can decline it.');
     order.declined.push(workerId);
+    const consequence = refusalConsequence(reason);
+    order.refusals ??= [];
+    order.refusals.push({ workerId, reason, at: now(), opportunityPenalty: 0 });
+    const opportunity = u.opportunities
+      .all()
+      .filter((item) => item.jobId === jobId && item.workerId === workerId)
+      .at(-1);
+    if (opportunity) {
+      opportunity.outcome = 'declined';
+      u.opportunities.put(opportunity);
+    }
     event(
       u,
       { role: 'worker', id: workerId },
       jobId,
       'offer-declined',
-      'Worker declined; dispatch ran again.',
+      `Worker declined (${reason}); opportunity penalty ${consequence.opportunityPenalty}. Dispatch ran again.`,
     );
     const assigned = await assign(
       u,
@@ -331,8 +602,18 @@ export async function completeWork(
         'Frozen dispatch costs are unavailable; settlement blocked.',
       );
     const policy = decision.policy,
-      levy = rupees((order.job.payout * policy.terms.levyBps) / 10000);
-    const dividendPool = rupees((levy * policy.terms.dividendBps) / 10000);
+      pricing = order.pricing ?? priceBands[order.job.category],
+      approvedExtras = rupees(
+        u.changeOrders
+          .all()
+          .filter(
+            (change) =>
+              change.jobId === jobId && canSettleChangeOrder(change.status),
+          )
+          .reduce((sum, change) => sum + change.labour + change.material, 0),
+      ),
+      operations = pricing.cooperativeOperations,
+      dividendPool = rupees((operations * policy.terms.dividendBps) / 10000);
     const activeMembers = u.state.workers.filter((w) => w.active);
     const perMember = rupees(dividendPool / activeMembers.length);
     u.ledger.append({
@@ -340,10 +621,10 @@ export async function completeWork(
       jobId,
       workerId,
       kind: 'work',
-      amount: rupees(candidate.net - levy),
+      amount: rupees(candidate.net + approvedExtras),
       at: now(),
       decisionId: decision.id,
-      detail: `Net contribution ${candidate.net}; cooperative levy ${levy}.`,
+      detail: `Frozen net ${candidate.net}; approved extras ${approvedExtras}; no worker deduction.`,
     });
     for (const member of activeMembers)
       u.ledger.append({
@@ -361,11 +642,37 @@ export async function completeWork(
       jobId,
       workerId: null,
       kind: 'reserve',
-      amount: rupees(levy - perMember * activeMembers.length),
+      amount: rupees(operations - perMember * activeMembers.length),
       at: now(),
       decisionId: decision.id,
       detail: 'Cooperative reserve after member dividend allocation.',
     });
+    u.ledger.append({
+      id: id(u, 'LED'),
+      jobId,
+      workerId: null,
+      kind: 'welfare',
+      amount: pricing.welfareContribution,
+      at: now(),
+      decisionId: decision.id,
+      detail: 'Customer-funded cooperative welfare contribution.',
+    });
+    const settlementId = id(u, 'SET');
+    u.settlements.put({
+      id: settlementId,
+      invoiceId: id(u, 'INV'),
+      jobId,
+      customerTotal: pricing.customerTotal + approvedExtras,
+      workerPay: rupees(candidate.net + approvedExtras),
+      welfareContribution: pricing.welfareContribution,
+      cooperativeOperations: operations,
+      approvedExtras,
+      disputedAmount: 0,
+      status: 'settled',
+      settledAt: now(),
+    });
+    order.settlementId = settlementId;
+    u.jobs.put(order);
   });
 }
 export async function cancelJob(
@@ -387,12 +694,16 @@ export async function cancelJob(
         departedAt: order.departedAt,
         cancelledAt: at,
       };
-    const charge =
-      actor === 'worker' &&
-      order.stage !== 'offered' &&
-      order.stage !== 'unassigned'
-        ? policy.terms.workerCancellationPenalty
-        : 0;
+    const consequence = cancellationProtection({
+      actor,
+      departedAt: order.departedAt,
+      workerPenalty:
+        order.stage !== 'offered' && order.stage !== 'unassigned'
+          ? policy.terms.workerCancellationPenalty
+          : 0,
+      travelCompensation: policy.terms.customerTravelCompensation ?? 70,
+    });
+    const charge = consequence.workerPenalty;
     const decision = await snapshot(u, {
       jobId,
       kind: 'cancellation',
@@ -402,7 +713,12 @@ export async function cancelJob(
       policy,
       receipt: null,
       evidence,
-      outcome: { workerId: order.workerId, charge, attribution: actor },
+      outcome: {
+        workerId: order.workerId,
+        charge,
+        compensation: consequence.workerCompensation,
+        attribution: actor,
+      },
     });
     order.stage = 'cancelled';
     order.job.status = 'cancelled';
@@ -413,7 +729,7 @@ export async function cancelJob(
       decision.actor,
       jobId,
       'cancelled',
-      `${actor} cancelled; worker penalty ${charge}.`,
+      `${actor} cancelled; worker penalty ${charge}; travel compensation ${consequence.workerCompensation}.`,
       at,
     );
     if (charge && order.workerId) {
@@ -442,8 +758,193 @@ export async function cancelJob(
         detail: 'Worker cancellation after acceptance.',
       });
     }
+    if (consequence.workerCompensation && order.workerId)
+      u.ledger.append({
+        id: id(u, 'LED'),
+        jobId,
+        workerId: order.workerId,
+        kind: 'travel-compensation',
+        amount: consequence.workerCompensation,
+        at,
+        decisionId: decision.id,
+        detail:
+          'Customer cancelled after travel began; worker travel protected.',
+      });
   });
 }
+export const proposeChangeOrder = (
+  repo: ApplicationRepository,
+  jobId: string,
+  workerId: string,
+  description: string,
+  labour: number,
+  material: number,
+) =>
+  repo.transaction((u) => {
+    const order = u.jobs.get(jobId);
+    if (
+      order.workerId !== workerId ||
+      !['arrived', 'working'].includes(order.stage)
+    )
+      throw new Error(
+        'A scope change can be raised only by the assigned member on site.',
+      );
+    if (
+      !description.trim() ||
+      labour < 0 ||
+      material < 0 ||
+      labour + material <= 0
+    )
+      throw new Error('Describe the extra work and enter a valid amount.');
+    if (
+      u.changeOrders
+        .all()
+        .some(
+          (change) => change.jobId === jobId && change.status === 'proposed',
+        )
+    )
+      throw new Error('This job already has a change order awaiting consent.');
+    const value = {
+      id: id(u, 'SCOPE'),
+      jobId,
+      workerId,
+      description: description.trim(),
+      labour: rupees(labour),
+      material: rupees(material),
+      status: 'proposed' as const,
+      proposedAt: now(),
+      resolvedAt: null,
+    };
+    u.changeOrders.put(value);
+    event(
+      u,
+      { role: 'worker', id: workerId },
+      jobId,
+      'scope-change-proposed',
+      `${value.description}; customer approval required before extra work.`,
+    );
+    return value.id;
+  });
+
+export const decideChangeOrder = (
+  repo: ApplicationRepository,
+  changeOrderId: string,
+  decision: 'approved' | 'declined',
+) =>
+  repo.transaction((u) => {
+    const value = u.changeOrders.get(changeOrderId);
+    if (value.status !== 'proposed')
+      throw new Error('This scope change is already decided.');
+    value.status = decision;
+    value.resolvedAt = now();
+    u.changeOrders.put(value);
+    event(
+      u,
+      customer,
+      value.jobId,
+      `scope-change-${decision}`,
+      decision === 'approved'
+        ? 'Customer approved the quoted extra work.'
+        : 'Customer declined; refusal cannot harm the worker.',
+    );
+  });
+
+export const submitCustomerFeedback = (
+  repo: ApplicationRepository,
+  jobId: string,
+  rating: number,
+  note = '',
+) =>
+  repo.transaction((u) => {
+    const order = u.jobs.get(jobId);
+    if (order.stage !== 'completed')
+      throw new Error('Complete the service before rating it.');
+    if (u.feedback.all().some((item) => item.jobId === jobId))
+      throw new Error('Feedback is already recorded for this job.');
+    const protection = ratingProtection(rating);
+    u.feedback.put({
+      id: id(u, 'RATE'),
+      jobId,
+      rating,
+      note: note.trim(),
+      ...protection,
+      at: now(),
+    });
+    event(
+      u,
+      customer,
+      jobId,
+      'customer-feedback-recorded',
+      `Rating ${rating}/5 recorded; automatic worker restriction false${protection.reviewRequired ? '; operations review opened' : ''}.`,
+    );
+  });
+
+export const submitWorkabilitySignal = (
+  repo: ApplicationRepository,
+  jobId: string,
+  workerId: string,
+  signal: 'clear-scope' | 'scope-changed' | 'safe-site' | 'safety-concern',
+) =>
+  repo.transaction((u) => {
+    const order = u.jobs.get(jobId);
+    if (
+      order.workerId !== workerId ||
+      !['completed', 'cancelled'].includes(order.stage)
+    )
+      throw new Error('Close the assigned job before recording workability.');
+    if (u.workability.all().some((item) => item.jobId === jobId))
+      throw new Error('Workability is already recorded for this job.');
+    const sensitive = signal === 'safety-concern';
+    u.workability.put({
+      id: id(u, 'WORK'),
+      jobId,
+      workerId,
+      signal,
+      sensitive,
+      status: sensitive ? 'operations-review' : 'recorded',
+      at: now(),
+    });
+    event(
+      u,
+      { role: 'worker', id: workerId },
+      jobId,
+      'workability-recorded',
+      sensitive
+        ? 'Sensitive safety signal routed privately to operations.'
+        : `Structured signal recorded: ${signal}.`,
+    );
+  });
+
+export const disputeMaterialCharge = (
+  repo: ApplicationRepository,
+  settlementId: string,
+) =>
+  repo.transaction((u) => {
+    const value = u.settlements.get(settlementId);
+    if (value.status === 'partially-disputed')
+      throw new Error('Material charge is already under review.');
+    const materials = u.changeOrders
+      .all()
+      .filter(
+        (change) =>
+          change.jobId === value.jobId && change.status === 'approved',
+      )
+      .reduce((sum, change) => sum + change.material, 0);
+    if (!materials)
+      throw new Error(
+        'This invoice has no approved material charge to dispute.',
+      );
+    value.status = 'partially-disputed';
+    value.disputedAmount = rupees(materials);
+    u.settlements.put(value);
+    event(
+      u,
+      customer,
+      value.jobId,
+      'material-charge-disputed',
+      `₹${value.disputedAmount} material charge sent to review; ₹${value.workerPay} settled labour remains posted.`,
+    );
+  });
 export const switchPersona = (
   repo: ApplicationRepository,
   persona: Persona,
@@ -453,9 +954,88 @@ export const switchPersona = (
     if (memberId && !u.state.workers.some((w) => w.id === memberId))
       throw new Error('Member not found.');
     u.state.session = {
+      ...u.state.session,
       persona,
       memberId: memberId ?? u.state.session.memberId,
     };
+  });
+export const setLocale = (
+  repo: ApplicationRepository,
+  locale: 'en' | 'hi' | 'mr',
+) =>
+  repo.transaction((u) => {
+    u.state.session.locale = locale;
+  });
+export const setCustomerName = (
+  repo: ApplicationRepository,
+  customerName: string,
+) =>
+  repo.transaction((u) => {
+    const clean = customerName.trim();
+    if (!clean) throw new Error('Enter the customer name.');
+    u.state.session.customerName = clean;
+  });
+export const finishWorkerOnboarding = (
+  repo: ApplicationRepository,
+  memberId: string,
+) =>
+  repo.transaction((u) => {
+    u.state.session.onboardingDone[memberId] = true;
+  });
+export const markNotificationsRead = (
+  repo: ApplicationRepository,
+  actor: Actor,
+) =>
+  repo.transaction((u) => {
+    for (const item of u.notifications.all().filter((value) =>
+      !value.readAt && value.recipient.role === actor.role && value.recipient.id === actor.id,
+    )) {
+      item.readAt = now();
+      u.notifications.put(item);
+    }
+  });
+export const updateWorkloadSettings = (
+  repo: ApplicationRepository,
+  memberId: string,
+  settings: {
+    availableUntil: number;
+    minimumRestGap: number;
+    maximumJobsToday: number;
+    heavyServiceLimit: number;
+    unavailablePeriods: { start: number; end: number }[];
+  },
+) =>
+  repo.transaction((u) => {
+    if (
+      !Number.isInteger(settings.availableUntil) ||
+      settings.availableUntil < 0 ||
+      settings.availableUntil > 1439 ||
+      !Number.isInteger(settings.minimumRestGap) ||
+      settings.minimumRestGap < 0 ||
+      !Number.isInteger(settings.maximumJobsToday) ||
+      settings.maximumJobsToday < 0 ||
+      !Number.isInteger(settings.heavyServiceLimit) ||
+      settings.heavyServiceLimit < 0 ||
+      settings.unavailablePeriods.some(
+        (period) =>
+          !Number.isInteger(period.start) ||
+          !Number.isInteger(period.end) ||
+          period.start < 0 ||
+          period.end > 1440 ||
+          period.start >= period.end,
+      )
+    )
+      throw new Error('Enter valid workload and rest limits.');
+    const profile = u.members.get(memberId);
+    profile.workload = { ...profile.workload, ...settings };
+    u.members.put(profile);
+    event(
+      u,
+      { role: 'worker', id: memberId },
+      memberId,
+      'workload-limits-updated',
+      `Available until ${Math.floor(settings.availableUntil / 60)}:${String(settings.availableUntil % 60).padStart(2, '0')}; ${settings.minimumRestGap}-minute rest; ${settings.maximumJobsToday} jobs; ${settings.heavyServiceLimit} heavy services.`,
+    );
   });
 export function wallet(state: ApplicationState, memberId: string) {
   const rows = state.ledger.filter((x) => x.workerId === memberId);
@@ -471,6 +1051,11 @@ export function wallet(state: ApplicationState, memberId: string) {
     penalties: rupees(
       rows
         .filter((x) => x.kind === 'penalty' || x.kind === 'remedy')
+        .reduce((s, x) => s + x.amount, 0),
+    ),
+    protections: rupees(
+      rows
+        .filter((x) => x.kind === 'travel-compensation')
         .reduce((s, x) => s + x.amount, 0),
     ),
     total: rupees(rows.reduce((s, x) => s + x.amount, 0)),
@@ -493,8 +1078,10 @@ export function projection(
 export async function proposePolicy(
   repo: ApplicationRepository,
   parameters: Policy['parameters'],
+  protectionIntent: ProtectionIntent = 'fair-opportunity',
 ) {
   return repo.transaction((u) => {
+    validateProtectionIntent(protectionIntent);
     if (u.state.proposalVersion)
       throw new Error('Finish the current proposal before drafting another.');
     const active = activePolicy(u);
@@ -503,18 +1090,21 @@ export async function proposePolicy(
       active.parameters.maxDelay === parameters.maxDelay &&
       active.parameters.netPriority === parameters.netPriority
     )
-      throw new Error('Change at least one dispatch parameter before proposing.');
-    const
-      draft = {
-        ...propose(active),
-        parameters,
-        votes: {},
-        terms: copy(active.terms),
-        historicalJobIds: [
-          ...dataset().jobs.map((j) => j.id),
-          ...u.state.jobs.map((j) => j.id),
-        ],
-      } as LivePolicy;
+      throw new Error(
+        'Change at least one dispatch parameter before proposing.',
+      );
+    const draft = {
+      ...propose(active),
+      parameters,
+      votes: {},
+      terms: copy(active.terms),
+      historicalJobIds: [
+        ...dataset().jobs.map((j) => j.id),
+        ...u.state.jobs.map((j) => j.id),
+      ],
+      protectionIntent,
+      protectionCheck: { passed: true, checkedAt: now() },
+    } as LivePolicy;
     draft.consultations = {};
     u.policies.put(draft);
     u.state.proposalVersion = draft.version;
@@ -715,18 +1305,8 @@ export const completeAccountabilityWindow = (
       basis = jobsById(u, record.basisJobIds),
       window = measurementJobs(policy.version),
       jobs = [...basis, ...window],
-      current = simulate(
-        jobs,
-        dataset().workers,
-        comparison,
-        u.state.rates,
-      ),
-      delivered = simulate(
-        jobs,
-        dataset().workers,
-        policy,
-        u.state.rates,
-      ),
+      current = simulate(jobs, dataset().workers, comparison, u.state.rates),
+      delivered = simulate(jobs, dataset().workers, policy, u.state.rates),
       change = metricChange(current.metrics, delivered.metrics),
       gap = {
         lowestLivelihood: rupees(
@@ -751,7 +1331,9 @@ export const completeAccountabilityWindow = (
       gap,
       livelihoodDeviationPercent: deviation,
       outcomes: window.map((job) => {
-        const receipt = delivered.receipts.find((item) => item.job.id === job.id),
+        const receipt = delivered.receipts.find(
+            (item) => item.job.id === job.id,
+          ),
           candidate = receipt?.candidates.find(
             (item) => item.worker.id === receipt.selected,
           );
@@ -790,34 +1372,27 @@ export const proposeCatchUpAllocation = (
     )
       throw new Error('This measurement period already has an allocation.');
     const policy = u.policies.get(accountability.policyVersion),
-      comparison = u.policies.get(accountability.comparisonVersion),
       jobs = [
         ...jobsById(u, accountability.basisJobIds),
         ...measurementJobs(policy.version),
       ],
-      before = simulate(
-        jobs,
-        dataset().workers,
-        comparison,
-        u.state.rates,
-      ).workers,
-      after = simulate(
-        jobs,
-        dataset().workers,
-        policy,
-        u.state.rates,
-      ).workers,
+      after = simulate(jobs, dataset().workers, policy, u.state.rates).workers,
+      highestLivelihood = Math.max(...after.map((worker) => worker.net)),
       opportunity = after
-        .map((worker) => ({
-          worker,
-          gain: rupees(
-            worker.net -
-              (before.find((candidate) => candidate.id === worker.id)?.net ?? 0),
-          ),
-        }))
+        .map((worker) => {
+          const access = u.opportunities
+            .all()
+            .filter((item) => item.workerId === worker.id).length;
+          const livelihoodGap = rupees(highestLivelihood - worker.net);
+          return {
+            worker,
+            access,
+            livelihoodGap,
+            need: opportunityNeedScore(livelihoodGap, access),
+          };
+        })
         .sort(
-          (a, b) =>
-            b.gain - a.gain || a.worker.id.localeCompare(b.worker.id),
+          (a, b) => b.need - a.need || a.worker.id.localeCompare(b.worker.id),
         )[0],
       reserve = rupees(
         u.ledger
@@ -825,23 +1400,25 @@ export const proposeCatchUpAllocation = (
           .filter((entry) => entry.kind === 'reserve')
           .reduce((sum, entry) => sum + entry.amount, 0),
       );
-    if (!opportunity || opportunity.gain <= 0)
-      throw new Error('This period shows no bounded opportunity loss to remedy.');
-    const amount = rupees(
-      Math.min(500, reserve, opportunity.gain * 0.1),
-    );
+    if (!opportunity || opportunity.need <= 0)
+      throw new Error(
+        'This period shows no bounded opportunity loss to remedy.',
+      );
+    const amount = rupees(Math.min(500, reserve, opportunity.need * 0.1));
     if (amount <= 0)
-      throw new Error('No cooperative reserve is available for a catch-up vote.');
+      throw new Error(
+        'No cooperative reserve is available for a catch-up vote.',
+      );
     const value: CatchUpAllocation = {
       id: id(u, 'CATCH'),
       policyVersion: policy.version,
       accountabilityId,
       beneficiaryId: opportunity.worker.id,
       amount,
-      opportunityGap: opportunity.gain,
+      opportunityGap: opportunity.need,
       availableReserveAtProposal: reserve,
       cap: 500,
-      justification: `${opportunity.worker.name} had ${moneyForEvent(opportunity.gain)} more livelihood under v${policy.version} than v${comparison.version} over the closed measurement basis.`,
+      justification: `${opportunity.worker.name} had a ${moneyForEvent(opportunity.livelihoodGap)} livelihood gap and ${opportunity.access} valid local opportunities. Access-normalized need: ${moneyForEvent(opportunity.need)}.`,
       status: 'voting',
       votes: {},
       postedAt: null,

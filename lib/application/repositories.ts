@@ -11,6 +11,15 @@ import {
   type CourtCase,
   type AccountabilityRecord,
   type CatchUpAllocation,
+  type ChangeOrder,
+  type FeedbackRecord,
+  type MemberProfile,
+  type OpportunityRecord,
+  type SettlementRecord,
+  type WorkabilityRecord,
+  type JobOtp,
+  type JobEvidence,
+  type AppNotification,
 } from './model';
 
 export interface ReadRepository<T> {
@@ -39,12 +48,14 @@ export interface LedgerRepository {
 export interface ChallengeRepository extends ReadRepository<CourtCase> {
   put(value: CourtCase): void;
 }
-export interface AccountabilityRepository
-  extends ReadRepository<AccountabilityRecord> {
+export interface AccountabilityRepository extends ReadRepository<AccountabilityRecord> {
   put(value: AccountabilityRecord): void;
 }
 export interface CatchUpRepository extends ReadRepository<CatchUpAllocation> {
   put(value: CatchUpAllocation): void;
+}
+export interface MutableRepository<T> extends ReadRepository<T> {
+  put(value: T): void;
 }
 export interface UnitOfWork {
   state: ApplicationState;
@@ -56,6 +67,15 @@ export interface UnitOfWork {
   challenges: ChallengeRepository;
   accountability: AccountabilityRepository;
   catchUps: CatchUpRepository;
+  members: MutableRepository<MemberProfile>;
+  changeOrders: MutableRepository<ChangeOrder>;
+  feedback: MutableRepository<FeedbackRecord>;
+  workability: MutableRepository<WorkabilityRecord>;
+  settlements: MutableRepository<SettlementRecord>;
+  opportunities: MutableRepository<OpportunityRecord>;
+  otps: MutableRepository<JobOtp>;
+  evidence: MutableRepository<JobEvidence>;
+  notifications: MutableRepository<AppNotification>;
 }
 export interface ApplicationRepository {
   read(): ApplicationState;
@@ -97,6 +117,15 @@ function unit(state: ApplicationState): UnitOfWork {
     challenges: collection(state.challenges),
     accountability: collection(state.accountability),
     catchUps: collection(state.catchUps),
+    members: collection(state.members),
+    changeOrders: collection(state.changeOrders),
+    feedback: collection(state.feedback),
+    workability: collection(state.workability),
+    settlements: collection(state.settlements),
+    opportunities: collection(state.opportunities),
+    otps: collection(state.otps),
+    evidence: collection(state.evidence),
+    notifications: collection(state.notifications),
     snapshots: {
       all: () => freeze(snapshots.all()),
       get: (id) => freeze(snapshots.get(id)),
@@ -125,12 +154,12 @@ function decode(raw: string | null): ApplicationState {
     ApplicationState,
     'schema' | 'accountability' | 'catchUps'
   > & {
-    schema: 1 | 2 | 3;
+    schema: 1 | 2 | 3 | 4 | 5 | 6;
     accountability?: AccountabilityRecord[];
     catchUps?: CatchUpAllocation[];
   };
   if (parsed.schema === 1) {
-    parsed.schema = 3;
+    parsed.schema = 6;
     parsed.accountability = [];
     parsed.catchUps = [];
     parsed.policies = parsed.policies.map((policy) => ({
@@ -144,12 +173,62 @@ function decode(raw: string | null): ApplicationState {
       consultations: {},
     }));
   } else if (parsed.schema === 2) {
-    parsed.schema = 3;
+    parsed.schema = 6;
     parsed.catchUps = [];
   }
-  const s = parsed as ApplicationState;
+  const legacy = parsed as unknown as ApplicationState & {
+    schema: number;
+    members?: MemberProfile[];
+    changeOrders?: ChangeOrder[];
+    feedback?: FeedbackRecord[];
+    workability?: WorkabilityRecord[];
+    settlements?: SettlementRecord[];
+    opportunities?: OpportunityRecord[];
+    otps?: JobOtp[];
+    evidence?: JobEvidence[];
+    notifications?: AppNotification[];
+  };
+  if ([3, 4, 5].includes((legacy as { schema: number }).schema))
+    (legacy as { schema: number }).schema = 6;
+  const defaults = emptyApplication();
+  legacy.members ??= defaults.members;
+  legacy.changeOrders ??= [];
+  legacy.feedback ??= [];
+  legacy.workability ??= [];
+  legacy.settlements ??= [];
+  legacy.opportunities ??= [];
+  legacy.otps ??= [];
+  legacy.evidence ??= [];
+  legacy.notifications ??= [];
+  legacy.session = {
+    ...legacy.session,
+    customerName: legacy.session.customerName ?? 'Demo customer',
+    locale: legacy.session.locale ?? 'en',
+    onboardingDone: legacy.session.onboardingDone ?? {},
+  };
+  legacy.members = legacy.members.map((member) => ({
+    ...member,
+    workload: member.workload ?? {
+      availableUntil: 19 * 60,
+      minimumRestGap: 30,
+      maximumJobsToday: 4,
+      heavyServiceLimit: 2,
+      unavailablePeriods: [],
+    },
+  }));
+  legacy.jobs = legacy.jobs.map((job) => ({
+    ...job,
+    refusals: job.refusals ?? [],
+    settlementId: job.settlementId ?? null,
+    emergency: job.emergency ?? job.job.emergency,
+    arrivedAt: job.arrivedAt ?? null,
+    workStartedAt: job.workStartedAt ?? null,
+    route: job.route ?? null,
+    travelProgress: job.travelProgress ?? 0,
+  }));
+  const s = legacy as ApplicationState;
   if (
-    s.schema !== 3 ||
+    s.schema !== 6 ||
     !Number.isInteger(s.revision) ||
     !Number.isInteger(s.sequence) ||
     !s.session ||
@@ -164,6 +243,15 @@ function decode(raw: string | null): ApplicationState {
       'challenges',
       'accountability',
       'catchUps',
+      'members',
+      'changeOrders',
+      'feedback',
+      'workability',
+      'settlements',
+      'opportunities',
+      'otps',
+      'evidence',
+      'notifications',
     ].every((k) => Array.isArray(s[k as keyof ApplicationState])) ||
     !s.policies.some(
       (p) => p.version === s.activeVersion && p.status === 'active',

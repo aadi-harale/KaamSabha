@@ -64,3 +64,72 @@ Verified in one continuous browser session after the core walkthrough passed:
 6. v4 changed the floor from ₹4,500 to ₹5,500 and maximum extra wait from 10 to 12 minutes. Before Asha Mane viewed her own projection, both vote buttons were disabled with an explicit instruction. Seven support and two oppose votes activated v4. Version history retained Suresh More's “Twelve extra minutes is too much for time-sensitive customers” and Priya Gaikwad's “Keep the ten-minute limit until delivered results justify more.” The persisted v4 forecast is +₹179 lowest livelihood and +0.84 minute average ETA.
 
 Full-page desktop and 390px mobile governance screenshots were inspected after the final fixes. Mobile width equalled its client width (390px), so there was no horizontal overflow. Browser console errors: none. Screenshots: `outputs/stretch-governance-desktop-final.png`, `outputs/stretch-governance-mobile-final.png`, and `outputs/stretch-customer-desktop.png`.
+
+# 7 September 2026 protection-floor acceptance run
+
+One uninterrupted browser session started from an empty schema-4 workspace and produced the following verified records:
+
+1. Customer created `KMS-LIVE-00001`, an ₹850 Kharadi electrician booking under constitution v2.
+2. Dispatch selected Ravi Shinde. The customer map showed Ravi at 10 minutes and Asha Mane at 14 minutes.
+3. Ravi saw ₹760 service pay, ₹87 frozen estimated costs and ₹673 estimated net before acceptance.
+4. Ravi accepted, travelled, arrived and proposed a ₹200 scope change: ₹120 labour and ₹80 material.
+5. Customer approved the change. Ravi started and completed the work.
+6. Settlement posted ₹873 completed-work net and ₹2 dividend to Ravi; his wallet total became ₹875.
+7. A one-star rating opened cooperative review and did not restrict Ravi.
+8. Customer disputed the ₹80 approved material portion. The settlement became partially disputed while ₹873 worker pay remained posted.
+9. Second job `KMS-LIVE-00036` selected Asha. After acceptance and travel, customer cancellation posted ₹70 travel compensation and a ₹0 worker penalty.
+10. Asha challenged decision `DEC-00043`. Replay confirmed the frozen consequence; no-change remedy and closure were recorded.
+11. A paid-priority policy proposal was rejected by the Worker Protection Floor in the interface.
+12. The valid v3 twin replayed 102 identical jobs and 12 workers: lowest livelihood ₹3,732 → ₹4,546, mean ETA 14.88 → 15.73 minutes, and 102 → 102 fulfilled jobs.
+13. Nine manually triggered member support actions met quorum and approval; v3 activated.
+14. Third booking `KMS-LIVE-00075` froze constitution v3. Asha’s worker view showed both the v2 and v3 jobs and projection v2 ₹7,962 / 11 jobs → v3 ₹6,777 / 10 jobs.
+15. Reload retained v3, all three jobs, wallets, settlements, feedback, workability and the closed case.
+16. Operations showed 3 local bookings, 1 completion, 0 open cases, and 12/12 member coverage, each derived from this session’s records.
+
+Additional verification after final fixes:
+
+- 54 Vitest tests across 5 files passed.
+- TypeScript, Oxlint and production build passed.
+- All 6 main surfaces passed horizontal-overflow checks at 320, 768, 1024 and 1440 pixels.
+- `/demo` retained the original deterministic comparison and logged no browser errors.
+- 13 inspected screenshots are stored in `artifacts/screenshots/`.
+
+## Receipt map, opportunity access and workload-safety run
+
+Verified against the production build at `127.0.0.1:4173` in one uninterrupted session:
+
+1. `KMS-LIVE-00001` used v2 and selected Ravi Shinde. The real OpenStreetMap view and `DEC-00004` showed the same selected ID, locality, four eligible markers, 1 km distance, 10-minute ETA, +0-minute tradeoff, +8-minute rule and 35-minute SLA.
+2. Ravi accepted and completed the booking. His weekly summary moved to 1 valid opportunity, 1 accepted job and ₹675 estimated livelihood: ₹673 work net plus ₹2 dividend.
+3. Meena’s passed-over view named the same `KMS-LIVE-00001` and opened its candidate/tie-break evidence.
+4. `KMS-LIVE-00029` selected Asha. After acceptance and departure, customer cancellation recorded ₹0 penalty and ₹70 travel protection. `CASE-00040` replayed frozen `DEC-00037`, confirmed the decision, recorded a no-change remedy and closed. Open decisions fell from 1 to 0.
+5. The v3 twin replayed the same 102 jobs and 12 members: lowest livelihood ₹3,732 → ₹4,546, average ETA 14.88 → 15.73 minutes, and 102 → 102 fulfilled jobs.
+6. Nine manually triggered support votes met quorum 9 and threshold 7. Activation changed the live constitution from ₹3,500/+8 minutes to ₹4,500/+10 minutes.
+7. Worker projections recomputed immediately. Ravi changed from v2 ₹12,426/17 jobs to v3 ₹9,954/13; Asha changed from v2 ₹7,317/10 to v3 ₹6,132/9. Settled wallet rows remained unchanged.
+8. New booking `KMS-LIVE-00069` generated `DEC-00072`, selected Asha and explicitly froze policy v3 with the +10-minute allowance. Refresh retained v3 and all three jobs.
+9. Operations showed 3 local bookings, 1 completed service, 0 open decisions, 12/12 member coverage and 41 events. The event register contained each booking, transition, challenge action, impact review, vote, activation and v3 offer from this session.
+
+The `/demo` comparison was also run in production. On identical geography, the selected marker changes from nearby Ravi under standard v1 to Meena under constitution v2, with a seven-minute tradeoff inside the eight-minute member rule. Final comparison values remain 100/100 fulfilled, +2.3-minute average ETA, and lowest livelihood ₹573 → ₹3,732.
+
+Responsive evidence: customer map height 300px at 320px and no overflow; 330px with no overflow at 768/1024/1440px. Demo map height 300px and no overflow at 375/390/430px. Worker workload controls stacked to one column with no overflow at 375px. Real tiles and zoom controls rendered; runtime console errors were empty. The SVG fallback and customer-data redaction are covered by automated tests.
+
+Final commands: `npm test` passed 61 tests across six files; `npm run typecheck`, `npm run lint`, and `npm run build` passed.
+# Ship-ready expansion verification — 7 September 2026
+
+The production build at `127.0.0.1:4173` retained the existing schema-5 workspace through schema-6 migration without changing frozen DecisionSnapshot hashes.
+
+| Step | Observed result |
+| --- | --- |
+| Assisted intake | Entered “Fan sparks and stops after five minutes”; `/api/intake` returned the explicit missing-key failure and the editable deterministic fallback suggested Electrician inspection. Booking stayed enabled. |
+| New booking | `KMS-LIVE-00075`, Electrician, Kharadi, 14:00, emergency, constitution v3. |
+| Dispatch | Ravi Shinde selected; receipt retained the full eligible candidate/tie-break register and ₹673 frozen estimated net. |
+| Accept and route | Ravi accepted. One `RouteService` call returned an OSRM road route: 1.7 km and 3 minutes for the illustrative endpoints. The geometry was saved on the shared job. |
+| Travel | Three explicit user actions advanced shared progress to 34%, 67%, then arrived; no timer manufactured state. |
+| Start verification | Customer received start code 475153 only after Ravi requested it. Entering it moved the job from `start-verification` to `working`. |
+| Completion verification | A separate completion code was generated and accepted. The start code and completion code were distinct and single-use. |
+| Settlement | Job completed; Ravi’s wallet changed from ₹675 to ₹1,350, showing ₹1,346 completed-work net and ₹4 dividends. |
+| Persistence | Browser refresh preserved the completed job, v3 receipt, OSRM route, OTP usage, wallet and Fair Work totals. The first-time guide stayed completed. |
+| Marathi mobile | Customer and worker at 390×844 showed persisted Marathi controls, Devanagari wrapping, worker bottom navigation with Fair Work centered, and no horizontal overflow. |
+
+Automated checks after implementation: 64 tests across 7 files, typecheck, lint and production build all passed. Route tests cover normalized provider geometry and deterministic approximate fallback. OTP integration tests cover a persisted incorrect attempt, successful start, wrong-state reuse rejection, distinct completion code, settlement and used-code records.
+
+Supabase credentials were absent from files and process environment. The migrations, RLS, private Storage policy, Realtime publication, deterministic seed, anonymous client seam and server-only role claim were created but could not be applied or verified against the hosted project. Connected source-of-truth behavior, two-window Realtime, private Storage authorization and deployed production remain open and are not claimed as passed.

@@ -8,7 +8,7 @@ Worker ownership answers who owns the platform. KAAMSABHA demonstrates who contr
 
 ## Run
 
-Requires Node.js 22.13+ and npm. No API keys, accounts or paid services.
+Requires Node.js 22.13+ and npm. The explicit offline demo mode needs no API keys, accounts or paid services.
 
 ```sh
 npm install
@@ -34,7 +34,7 @@ npm run build
 
 ## Architecture
 
-React 19 + TypeScript, Vite/Vinext App Router and Tailwind. Accessible Base UI/shadcn dialogs and select controls come from the retained scaffold. No application backend or external authentication. One versioned application envelope is persisted atomically in localStorage behind repository interfaces; browser storage is a device-local prototype boundary, not an audit-security boundary.
+React 19 + TypeScript, Vite/Vinext App Router and Tailwind. Accessible Base UI/shadcn dialogs and select controls come from the retained scaffold. One versioned application envelope is persisted atomically in localStorage behind repository interfaces for the verified offline demo. A Supabase client, server-only demo-role endpoint, reproducible PostgreSQL migrations, RLS policies, private evidence bucket policy, and Realtime publication are committed for connected mode.
 
 - `lib/engine.ts`: seeded dataset, pure dispatch, metrics, frozen receipts, policy lifecycle and appeals.
 - `lib/booking.ts`: live booking interval reservations, including out-of-order requests.
@@ -42,6 +42,10 @@ React 19 + TypeScript, Vite/Vinext App Router and Tailwind. Accessible Base UI/s
 - `lib/application/repositories.ts`: replaceable repository interfaces, atomic local adapter, revision checks and separate demo persistence.
 - `lib/application/service.ts`: booking, offer, work, settlement, governance and Replay Court commands.
 - `lib/application/model.ts`: jobs, events, journals and SHA-256 hash-chained `DecisionSnapshot` records.
+- `lib/application/route-service.ts`: one OSRM road-route adapter with explicit direct-path fallback.
+- `lib/i18n.ts`: persisted English, Hindi and Marathi resources for role entry and critical booking/worker controls.
+- `app/api/intake/route.ts`: schema-checked, server-key-only AI intake with a non-blocking local fallback.
+- `supabase/migrations/`: normalized schema, indexes, RLS, private Storage, Realtime and deterministic seed.
 - `components/application.tsx`: customer, worker-member and operations personas.
 - `components/kaamsabha.tsx`: shared shell, comparison, metrics and receipts.
 - `components/product-views.tsx`: governance, worker, customer and operations flows.
@@ -91,6 +95,10 @@ Activation persists the original forecast in a separate accountability record. â
 
 ## Limits
 
-This is a local, single-browser prototype, not a multi-user production system. LocalStorage can be edited. Decision snapshots have SHA-256 integrity digests and previous-hash links, but a user controlling browser storage can replace the entire chain; this is not server-grade tamper evidence. Application ballots begin empty and accept one vote per seeded member. The isolated judge demo retains its eight seeded votes. Human-review is a stopping state until an operator resolves it. No federated exchange, authentication, KYC, messaging, localization or live payment is connected.
+The locally verified mode is single-browser until Supabase project credentials are supplied and the committed migrations are applied. LocalStorage can be edited. Decision snapshots have SHA-256 integrity digests and previous-hash links, but a user controlling browser storage can replace the entire chain; this is not server-grade tamper evidence. Application ballots begin empty and accept one vote per seeded member. The isolated judge demo retains its eight seeded votes. Human review is a stopping state until an operator resolves it. KYC, SMS/WhatsApp and live payment processing are not connected.
+
+## Connected-mode configuration
+
+Copy `.env.example` to a private environment file and fill values from the supplied Supabase project. Never commit that file. Apply `supabase/migrations` in order, enable anonymous sign-in for demo access, and set `DEMO_ROLE_ACCESS=true` only for the judging environment. The application deliberately remains labelled **Offline demo mode** until a database repository is configured and verified; it does not silently combine browser state with hosted state.
 
 Current verified state and remaining issues are recorded in `AGENT_STATE.md`.

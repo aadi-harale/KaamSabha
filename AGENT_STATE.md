@@ -1,67 +1,145 @@
 # Product
-KAAMSABHA is a SIH26089 prototype: a governance runtime for worker-owned household-service cooperatives.
 
-# Non-negotiable thesis
-Worker-members can write, test, vote on, execute, explain and challenge the rules deciding who earns.
+KAAMSABHA is a SIH26089 cooperative service marketplace and governance runtime for household and community work.
+The current judge path is a production-built, explicit device-local fallback using synthetic Pune data.
 
-# Core mechanisms
-- Constitution: executable opportunity rules subordinate to hard dispatch constraints.
-- Policy twin: identical synthetic workers/jobs replayed under two policies.
-- Receipt and Replay Court: frozen inputs support reproducible decisions and remedies.
-- Net livelihood: gross payout minus illustrative travel, time, consumables and cancellation costs.
+# Locked thesis
 
-# Architecture
-React 19, TypeScript, Vite/Vinext App Router, Tailwind and retained Base UI/shadcn primitives. No backend or credentials required.
-The real workspace persists one atomic, versioned localStorage envelope behind Job, Policy, Snapshot, Event, Ledger, Challenge, Accountability and CatchUp repository interfaces. Commands own all mutations. SHA-256 decision snapshots form a previous-hash chain. Schema 1 and 2 envelopes migrate without rewriting frozen snapshots. The deterministic judge demo has separate repository storage and legacy ballot migration.
+The cooperative belongs to workers. The dispatch rules do too.
+Worker protections are constitutional limits; member votes govern opportunity allocation above those limits.
+
+# Four mechanisms
+
+- Worker Protection Floor: immutable safety, payout, refusal, rating, scope and settlement limits.
+- Cooperative Dispatch Constitution: member-approved parameters execute in every new dispatch.
+- Counterfactual Policy Twin: the same jobs and workers run under current and proposed rules.
+- Decision Receipt and Replay Court: frozen inputs explain decisions and support challenges/remedies.
+
+# Six safeguards
+
+- Opportunity Access Normalization counts only selected offers passing every hard and workload check.
+- Protected Payout blocks reverse bidding, paid rank and service pay below the cooperative minimum.
+- Scope Lock excludes extra labour/material until an explicit customer-approved change order.
+- Cancellation and Settlement Protection preserves undisputed labour and protects travel after customer cancellation.
+- Rating and Deactivation Firewall prevents one rating from automatically restricting work access.
+- Workload Safety Guard enforces availability, rest, job-count, heavy-service and unavailable-period boundaries before ranking.
 
 # Routes
-/ and /app: persona entry.
-/customer: real local booking, dispatch and cancellation.
-/worker: 12 persona choices, offer/work lifecycle, wallet, skipped jobs, receipts and challenges.
-/governance: proposal, historical simulation, member-specific consent gate, preserved dissent, voting, activation, outcome measurement, policy history and bounded catch-up allocation.
-/operations: record-derived counters, event history and Replay Court.
-/demo and /demo/*: isolated original deterministic judge journey.
 
-# Data
-Implemented deterministic seed 26089; 12 members, 100 jobs, 5 services, 10 illustrative Pune zones. All comparison values come from simulation. Separate new-booking ledger preserves the fixed judge dataset.
+- `/` and `/app`: application entry, language choice and demo role selection.
+- `/customer`: assisted intake, booking, dispatch, customer-safe map, tracking, OTP display, evidence, scope approval, invoice and feedback.
+- `/worker`: worker selector, pay-before-accept, jobs, route progress, OTP entry, proof, scope change, Fair Work, earnings and workload limits.
+- `/operations`: record-derived counters, events, workers, settlements and Replay Court.
+- `/governance`: protection validation, Policy Twin, impact review, voting, activation, accountability and bounded catch-up.
+- `/demo` and `/demo/*`: isolated deterministic judge presentation using the same engine.
+- `/api/intake`: server-key-only structured AI intake with schema validation.
+- `/api/demo/claim-role`: server-only anonymous demo-role binding, disabled unless configured.
 
-# Dispatch invariants
-Skills, active, availability, schedules, radius and SLA always precede opportunity preference. Emergency uses efficiency order. Stable ID final tie-break.
+# Data architecture
+
+React 19, TypeScript, Vinext/Vite, Leaflet, OpenStreetMap, OSRM and Supabase JS.
+Schema-6 offline state persists atomically in localStorage behind strict repository interfaces.
+Jobs, policies, snapshots, events, ledgers, cases, settlements, opportunities, OTPs, evidence metadata, notifications, routes, locale and onboarding share one envelope.
+Schema 1–5 migration preserves frozen snapshot payloads and hashes.
+Commands own mutations and reject invalid state transitions.
+Decision snapshots use SHA-256 canonical hashes and previous-hash links.
+The deterministic seed is 26089 with 12 members, 100 historical jobs, 5 services and 10 Pune locality anchors.
+
+# Supabase state
+
+`supabase/migrations/001..010` defines normalized production tables, constraints and indexes.
+Committed schema includes cooperatives, profiles, customers, workers, skills, workload limits, jobs, append-only events, OTPs, evidence, change orders, notifications, opportunities, policies, votes, simulations, decisions, challenges, replay, settlements, ratings and forecasts.
+RLS is enabled on exposed tables with customer/worker/admin helper functions and role-scoped core policies.
+`job-evidence` is declared private with image-only MIME and size limits plus authenticated access policies.
+Realtime publication is declared for jobs, events, notifications and change orders.
+Seed SQL creates one cooperative, five localized services, 12 stable workers, workload limits, verified skills, active v2 and 100 deterministic historical jobs.
+Anonymous browser auth and server-only role claim code are implemented.
+No Supabase URL/key/database credential exists in the workspace or process environment.
+Migrations have not been applied to the hosted project and connected repository operation is not verified.
+The application therefore labels its verified mode `Offline demo mode` and does not claim hosted persistence.
+
+# Core invariants
+
+Hard skill, active status, availability, schedule, radius, SLA and workload safety precede livelihood preference.
+Emergency dispatch uses efficiency order.
+Stable worker ID is the final tie-break.
+Policy activation affects only later bookings; frozen receipts and settled wallets never change retroactively.
+Simulation precedes voting; quorum is 9 and approval requires 7 support votes.
+Replay uses frozen historical inputs rather than current state.
+Worker refusal carries zero opportunity/rating penalty.
+Start and completion codes are job-specific, type-specific, six-digit, expiring, attempt-limited and single-use.
+Start and completion codes are always distinct for a job.
+The offline demo stores customer-visible codes locally and does not claim server-grade OTP secrecy.
+AI cannot select workers, calculate pay, impose penalties, decide replay or activate policy.
 
 # Design decisions
-Read user-supplied AGENTS.md in full. White #FFFFFF, register #EDF1F3, ink #172B36, teal #006B60, slate #526779, amber #F3C66B.
-Segoe UI/system sans, scale 12/14/16/20/28/40. Named worker comparison is the single bold visual moment.
-No generic card dashboard, gradients, decorative imagery or marketing landing page.
 
-# Current state
-Device-local application lifecycle implemented and browser-verified. Customer booking generates real jobs and dispatch snapshots. Worker offers support accept/decline/redispatch, en route, arrival, work start, completion and cancellation. Completion atomically posts worker net, equal cooperative dividends and reserve entries. Governance uses manually cast votes and subsequent bookings consume the activated parameters. Replay Court separates opening, replay, adjudication, remedy and closure while preserving originals.
-Worker projection recomputes the 100 historical jobs plus non-cancelled local jobs under the active policy and shows previous-to-current version change. Settled wallets do not change retroactively. Operations counters derive only from application records.
-Voting now requires each member to inspect their own projected change; opposing votes require and permanently retain a reason. Activation persists forecast metrics. A deterministic 20-job measurement stores delivered outcomes, forecast gaps and a >25% mandatory re-vote flag. Customer disclosure reads maximum extra wait from the active policy. A separate catch-up vote can post a reserve-backed allocation bounded by 10% of measured opportunity gap, ₹500 and the actual reserve balance.
-Standard versus v2: 100/100 fulfilled in both; mean ETA 12.64 versus 14.94 minutes; lowest weekly net 573 versus 3731.8 rupees. Figures are illustrative, not field claims.
-Existing Sites project registered and saved in .openai/hosting.json. Reuse it; never recreate.
-Private deployment version 1 predates this application pass. Current changes are locally verified and not republished in this run.
+AGENTS.md is authoritative and was reviewed before frontend changes.
+Palette: white canvas, #EDF1F3 register, #172B36 ink, #006B60 cooperative action, #526779 slate, #F3C66B warning.
+Segoe UI/system sans plus Devanagari-capable system fallbacks; scale is 12/14/16/20/28/40.
+Same jobs, same workers, different rule remains the one bold visual moment.
+Customer is service-first, worker is task-first, operations is record-first and governance is consequence-first.
+Borders encode registers and state; gradients, glass, fake maps and repeated decorative cards remain excluded.
+The worker mobile bottom navigation gives Fair Work the central position.
+English, Hindi and Marathi use centralized resources; locale persists and sets the document language.
 
-# Verified commands
-- npm test: 41 tests passed across four files, including frozen golden vectors, complete persisted application lifecycle, consent/dissent, accountability, balanced catch-up posting, no-change proposal rejection and legacy-envelope migration.
-- npm run typecheck passed after final implementation changes.
-- npm run lint passed (unchanged generated components/ui and hooks/use-mobile excluded).
-- npm run build passed for root, app, five application routes and four isolated demo subroutes.
-- One uninterrupted browser acceptance session completed: three bookings, one completion and settlement, one cancellation challenge closed, v3 approved 7/2/3 and activated, subsequent v3 dispatch receipt inspected, and refresh persistence confirmed.
-- Separate browser session verified decline and redispatch from Ravi to Asha.
-- `/app`, `/customer`, `/worker`, `/governance`, `/operations`, `/demo` checked at 320/768/1024/1440px: 24 checks, no horizontal overflow.
-- New desktop/mobile screenshots inspected; mobile navigation and member selector labels fixed. 3px focus and reduced motion verified. Browser console errors: none.
-- Stretch browser run: v3 forecast +₹814 lowest livelihood/+0.85 min ETA; 20-job actual +₹725/+0.71 min; gaps ₹−90/−0.14 min; 11% deviation. Catch-up approved 7/2/3 and posted ₹16.96 to Priya with an equal reserve debit. v4 (₹5,500 floor/+12 minutes) approved 7/2/3 with two attributed dissent reasons; customer disclosure updated to 12 minutes. Desktop and 390px mobile screenshots inspected with no overflow or console errors.
-- Golden details and actual walkthrough values: VERIFICATION.md; setup and flows: README.md; source audit: AUDIT.md.
+# Verified functionality
+
+Deterministic dispatch, golden vectors, workload exclusions and all six safeguards pass tests.
+Booking creates a real job, opportunity record, event, frozen receipt and worker notification.
+Offers support accept, zero-penalty decline and deterministic redispatch.
+Road routing uses one RouteService; OSRM result feeds saved geometry, distance, duration and the shared travel map.
+Routing failure returns an explicit dashed approximate connector; tile failure uses the service-area fallback.
+Travel progress changes only through user actions and is shared between customer and worker views.
+Worker arrival now requires a start code; work completion requires a separate completion code.
+Wrong-code attempts persist, used codes fail, codes expire and regeneration invalidates earlier codes.
+Customer reference and worker before/during/after/variance image controls validate and compress image input.
+Evidence records carry job, type, caption, uploader and timestamp and survive refresh in local fallback.
+Customer assignment views expose only the assigned member, one expected-arrival value and a plain-language service-promise explanation.
+Candidate eligibility, rejection reasons, livelihood inputs, tie-break details, hashes and frozen JSON remain in the worker/audit receipt.
+AI intake sends only customer-entered description to a server endpoint, validates structured output and requires customer confirmation.
+Missing AI key visibly falls back to an editable deterministic draft without blocking booking.
+Worker onboarding is persisted per member and can be reopened from More.
+Fair Work exposes opportunities, assignment reasons, current rule, challenges and votes.
+Governance, accountability, catch-up, Replay Court, cancellation, rating, scope and settlement flows remain working.
+`/demo` remains isolated and visually uses the same receipt-backed map.
+
+Production browser walkthrough added booking `KMS-LIVE-00075` under active constitution v3.
+Ravi was assigned with frozen estimated net ₹673.
+OSRM returned a 1.7 km road route and 3-minute travel duration for the illustrative endpoints.
+Three explicit progress updates reached arrival.
+Start code 475153 moved the job into work; a separate completion code completed it.
+Settlement changed Ravi's displayed wallet from ₹675 to ₹1,350: ₹1,346 completed-work net and ₹4 dividends.
+Refresh preserved the completed job, route, OTP usage, v3 receipt, wallet and Fair Work totals.
+Marathi customer and worker views were inspected at 390×844; document language was `mr`, bottom navigation was present and no horizontal overflow occurred.
 
 # Known issues
-- Prototype uses synthetic data, illustrative zone distances/costs and browser-local state. The isolated judge ballot and all payments are explicitly simulated; application ballots start empty. No authentication, shared database or production payment processing.
-- PostgreSQL, multi-tenancy, OTP, KYC, messaging, Marathi/Hindi localization and live payments remain explicitly deferred. Vote eligibility remains the specified 12 seeded members.
-- SHA-256 hashes detect accidental/per-record changes but browser-local users can replace the whole chain; this is not server-grade tamper evidence.
-- Vinext build reports unknown route classification from framework static analysis; build succeeds and routes were exercised in browser.
-- No field validation, measured comprehension study or automated accessibility certification claimed.
+
+- Hosted Supabase database, RLS behavior, Realtime, private Storage and two-window synchronization cannot be verified without project credentials.
+- Main application commands still execute through the explicit local repository; Supabase is a committed contract and auth seam, not yet the verified source of truth.
+- AI endpoint fallback was verified because no AI key is configured; live provider output and image input were not verified.
+- Offline OTP hashes have no server-only pepper and the customer-visible code is local; use the migrated server table/function in connected mode.
+- Critical role/booking/worker controls are localized, but some detailed receipts, governance copy, service zones and admin tables remain English.
+- Evidence compression and repository validation are implemented; private Supabase Storage upload/authorization is not verified.
+- OSRM is a public demo route provider and returns route-time values that may differ from the earlier deterministic dispatch estimate; labels identify route mode.
+- Current production deployment was not republished; the locally built URL is the verified result.
+- Vinext reports unknown route classification during static analysis; build succeeds and both API routes are emitted.
+
+# Verified commands
+
+- `npm test`: 65 tests passed across 7 files.
+- `npm run typecheck`: passed.
+- `npm run lint`: passed.
+- `npm run build`: passed; root, five app routes, five demo routes and two API routes emitted.
+- Production browser: full new booking, OSRM route, shared travel, start OTP, completion OTP, settlement and refresh persistence passed.
+- Production browser: AI missing-key fallback returned editable structured intake and booking continued.
+- Production browser: 390×844 Marathi customer/worker views inspected with no horizontal page overflow.
+- Production browser console: no application errors observed in the walkthrough.
 
 # Next actions
-No outstanding device-local core or stretch acceptance-path tasks identified by completed checks. Republish only if the user requests updating the existing private Sites deployment.
 
-# Last updated
-2026-09-07: stateful application, original demo isolation, narrative walkthrough, all five gated stretch goals and second visual pass complete; final automated and browser checks pass.
+1. Supply Supabase publishable/service/database environment values and apply migrations.
+2. Implement and verify the normalized Supabase ApplicationRepository as connected source of truth.
+3. Run RLS, Storage and scoped Realtime tests in two browser windows.
+4. Complete Hindi/Marathi coverage for receipts, governance and operations details.
+5. Configure the AI provider, verify schema/error cases, then deploy and test the hosted URL.

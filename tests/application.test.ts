@@ -24,11 +24,13 @@ import {
   recordArrival,
   recordPolicyImpactView,
   remedyChallenge,
+  requestJobOtp,
   replayChallenge,
   simulatePolicy,
   startTravel,
   startWork,
   wallet,
+  verifyJobOtp,
 } from '../lib/application/service';
 import { verifySnapshot } from '../lib/application/model';
 
@@ -84,14 +86,17 @@ describe('complete persisted application lifecycle', () => {
     )!;
     expect([
       proposal.status,
-      Object.values(proposal.votes).filter((v) => v.choice === 'support').length,
+      Object.values(proposal.votes).filter((v) => v.choice === 'support')
+        .length,
       Object.values(proposal.votes).filter((v) => v.choice === 'oppose').length,
     ]).toEqual(['approved', 7, 2]);
     await activatePolicy(repo);
     state = repo.read();
     expect(state.activeVersion).toBe(3);
     expect(state.accountability).toHaveLength(1);
-    expect(state.accountability[0].forecast.change.lowestLivelihood).not.toBe(0);
+    expect(state.accountability[0].forecast.change.lowestLivelihood).not.toBe(
+      0,
+    );
     await completeAccountabilityWindow(repo, state.accountability[0].id);
     state = repo.read();
     expect(state.accountability[0].actual?.outcomes).toHaveLength(20);
@@ -217,11 +222,36 @@ describe('complete persisted application lifecycle', () => {
     });
     storage.setItem(APPLICATION_KEY, JSON.stringify(legacy));
     const restored = new LocalApplicationRepository(storage).read();
-    expect(restored.schema).toBe(3);
+    expect(restored.schema).toBe(6);
     expect(restored.accountability).toEqual([]);
     expect(restored.catchUps).toEqual([]);
     expect(restored.policies[0].consultations).toEqual({});
     expect(await verifySnapshot(restored.snapshots[0])).toBe(true);
+  });
+  it('requires single-use start and completion codes before settlement', async () => {
+    const repo = new LocalApplicationRepository(new MemoryStorage());
+    await createBooking(repo, {
+      service: 'Electrician', zone: 0, requested: 7 * 1440 + 690,
+      requirement: 'OTP lifecycle', payout: 680,
+    });
+    const job = repo.read().jobs[0];
+    const worker = job.workerId!;
+    await acceptOffer(repo, job.id, worker);
+    await startTravel(repo, job.id, worker);
+    await recordArrival(repo, job.id, worker);
+    const startCode = await requestJobOtp(repo, job.id, worker, 'start');
+    await expect(verifyJobOtp(repo, job.id, worker, 'start', '000000')).rejects.toThrow('incorrect');
+    expect(repo.read().otps[0].attemptCount).toBe(1);
+    await verifyJobOtp(repo, job.id, worker, 'start', startCode);
+    expect(repo.read().jobs[0].stage).toBe('working');
+    await expect(verifyJobOtp(repo, job.id, worker, 'start', startCode)).rejects.toThrow('state');
+    const completionCode = await requestJobOtp(repo, job.id, worker, 'completion');
+    expect(completionCode).not.toBe(startCode);
+    await verifyJobOtp(repo, job.id, worker, 'completion', completionCode);
+    const state = repo.read();
+    expect(state.jobs[0].stage).toBe('completed');
+    expect(state.settlements).toHaveLength(1);
+    expect(state.otps.every((otp) => otp.usedAt)).toBe(true);
   });
   it('serializes concurrent transactions without duplicate settlement', async () => {
     const repo = new LocalApplicationRepository(new MemoryStorage());

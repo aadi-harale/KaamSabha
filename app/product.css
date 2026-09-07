@@ -876,3 +876,44 @@ form > [data-slot='button'],
     content: attr(data-label);
   }
 }
+.comparison-map-shell {
+  margin: 18px 0 24px;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  border: 1px solid var(--border);
+  background: #fff;
+}
+.comparison-map-shell .real-dispatch-map {
+  border: 0;
+  border-left: 1px solid var(--border);
+}
+.comparison-map-state {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-left: 6px solid var(--primary);
+}
+.comparison-map-state span,
+.comparison-map-state strong,
+.comparison-map-state small {
+  display: block;
+}
+.comparison-map-state span,
+.comparison-map-state small {
+  color: var(--slate);
+  font-size: 12px;
+}
+.comparison-map-state strong {
+  margin: 8px 0;
+  font-size: 20px;
+}
+@media (max-width: 800px) {
+  .comparison-map-shell {
+    grid-template-columns: 1fr;
+  }
+  .comparison-map-shell .real-dispatch-map {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}

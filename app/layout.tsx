@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: 'KAAMSABHA | The rules belong to workers',
   description:
     'A working governance runtime for worker-owned service cooperatives. SIH26089 prototype with synthetic illustrative Pune data.',
+  icons: { icon: '/favicon.svg' },
 };
 export default function RootLayout({
   children,

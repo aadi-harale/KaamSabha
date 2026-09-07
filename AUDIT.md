@@ -37,21 +37,29 @@ The real workspace will use separate storage and domain services. The guided vie
 
 ## Verified classification after this run
 
-| Surface / interaction | Final classification | Evidence |
-|---|---|---|
-| `/demo` and `/demo/*` judge journey | Working | Isolated seed/repository; comparison, receipt, challenge, governance and reset retained. |
-| Customer booking, algorithmic dispatch and cancellation | Working | Atomic job/event/snapshot transaction; v2 and v3 receipts observed. |
-| Worker offer, decline/redispatch, accept, travel, arrival, work and completion | Working | Full sequence and separate decline path exercised in browser. |
-| Worker wallet and cooperative dividends | Working | Completion posts reconstructable work/dividend/reserve ledger rows. |
-| Governance proposal, simulation, voting and activation | Working | Empty ballot; distinct 7/2/3 votes; subsequent v3 dispatch proven. |
-| DecisionSnapshot and Replay Court | Working | SHA-256 chain, frozen inputs, staged replay/verdict/remedy/close; reload retained result. |
-| Persona switching and passed-over explanation | Working | All 12 members selectable; live job appeared for selected and eligible passed-over members. |
-| Operations counters and event history | Working | Counts derive from local jobs, settlements, cases and receipt candidates. |
-| Refresh persistence | Working | Jobs, wallet, policy v3 and closed case survived full navigation reload. |
-| Preserved dissent and informed voting | Working | Per-member impact review gates voting; opposing reasons remain attributed in version history. |
-| Promise-vs-delivered ledger | Working | Activation freezes forecast; a persisted 20-job outcome record computes actual change, gap and the 25% re-vote flag. |
-| Customer fairness disclosure | Working | Text reads the active policy's maximum extra wait and changed from 8 to 12 minutes during browser verification. |
-| Retroactive catch-up allocation | Working | Separate 9-member vote; amount bounded by opportunity gap, ₹500 cap and available reserve; balanced ledger posting verified. |
+| Surface / interaction                                                          | Final classification | Evidence                                                                                                                                           |
+| ------------------------------------------------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/demo` and `/demo/*` judge journey                                            | Working              | Isolated seed/repository; comparison, receipt, challenge, governance and reset retained.                                                           |
+| Customer booking, algorithmic dispatch and cancellation                        | Working              | Atomic job/event/snapshot transaction; v2 and v3 receipts observed.                                                                                |
+| Worker offer, decline/redispatch, accept, travel, arrival, work and completion | Working              | Full sequence and separate decline path exercised in browser.                                                                                      |
+| Worker wallet and cooperative dividends                                        | Working              | Completion posts reconstructable work/dividend/reserve ledger rows.                                                                                |
+| Governance proposal, simulation, voting and activation                         | Working              | Empty ballot; distinct 7/2/3 votes; subsequent v3 dispatch proven.                                                                                 |
+| DecisionSnapshot and Replay Court                                              | Working              | SHA-256 chain, frozen inputs, staged replay/verdict/remedy/close; reload retained result.                                                          |
+| Persona switching and passed-over explanation                                  | Working              | All 12 members selectable; live job appeared for selected and eligible passed-over members.                                                        |
+| Operations counters and event history                                          | Working              | Counts derive from local jobs, settlements, cases and receipt candidates.                                                                          |
+| Refresh persistence                                                            | Working              | Jobs, wallet, policy v3 and closed case survived full navigation reload.                                                                           |
+| Preserved dissent and informed voting                                          | Working              | Per-member impact review gates voting; opposing reasons remain attributed in version history.                                                      |
+| Promise-vs-delivered ledger                                                    | Working              | Activation freezes forecast; a persisted 20-job outcome record computes actual change, gap and the 25% re-vote flag.                               |
+| Customer fairness disclosure                                                   | Working              | Text reads the active policy's maximum extra wait and changed from 8 to 12 minutes during browser verification.                                    |
+| Retroactive catch-up allocation                                                | Working              | Separate 9-member vote; amount bounded by opportunity gap, ₹500 cap and available reserve; balanced ledger posting verified.                       |
+| Worker Protection Floor                                                        | Working              | Price, policy-intent, refusal, cancellation, rating and scope validators execute in the command path; direct tests pass.                           |
+| Price disclosure and payment settlement                                        | Working              | Customer split and worker pre-accept net shown; completion posts welfare/operations/worker records; disputed material leaves labour posted.        |
+| Scope consent and mutual workability                                           | Working              | Worker proposes one explicit change, customer approves/declines, settlement includes approved changes only; structured signals persist.            |
+| Member register and welfare representation                                     | Working              | Twelve persisted verified profiles, skill records, availability and welfare representation shown in operations.                                    |
+| Demand representation                                                          | Working              | Interpretable counts derived from the 100-job synthetic set; UI explicitly disclaims field accuracy.                                               |
+| Emergency booking and dispatch map                                             | Working              | Real Leaflet/OSM geography, pan/zoom, receipt-backed job/eligible/selected markers, SLA evidence, customer privacy and deterministic fallback.       |
+| Opportunity access normalization                                               | Working              | Only real selected offers passing all constraints are journalled; decline remains zero-penalty; access-normalized need has direct tests.             |
+| Workload safety                                                                | Working              | Available-until, rest, daily-job, heavy-service and unavailable-period limits run before ranking and produce receipt evidence without penalties.     |
 
 No static placeholder counter or dead acceptance-path control remained after verification. Production-only requirements remain deferred below.
 
@@ -72,3 +80,13 @@ Policy activation accountability uses a 20-job deterministic measurement window 
 ## Deferred production flags
 
 PostgreSQL, multi-tenancy, phone/OTP and phone-recovery, KYC vendor selection, SMS/WhatsApp, Marathi/Hindi localization and live payments remain outside this device-local run. Vote eligibility remains the existing 12-member rule; active-member or tenure refinements require a future cooperative decision. The local repository interfaces are intended replacement seams, not a claim of server durability or access control.
+# Final ship-ready scope audit — 7 September 2026
+
+| Classification | Current state |
+| --- | --- |
+| 🟢 Working | Deterministic dispatch and golden vectors; device-local repository and migration; customer booking; worker-specific offers; accept/decline/redispatch; OSRM road route with shared travel progress; start and completion OTP lifecycle; settlement; notifications; six safeguards; Fair Work; Constitution/Policy Twin/vote/activation; Decision Receipt/Replay Court; operations counters; `/demo`; mobile bottom navigation; persisted locale and onboarding. |
+| 🟡 Static | Seeded membership/certification evidence, synthetic demand representation, illustrative Pune worker positions. |
+| 🟠 Partially functional | English/Hindi/Marathi central resources cover entry and critical booking/worker controls, while detailed receipt/governance/admin copy remains English. Image compression and local evidence persistence work, while private Supabase Storage is unverified. AI intake is fully wired but only its missing-key fallback was verifiable. Supabase schema/auth/RLS/Realtime are committed but not connected to main application commands. |
+| 🔴 Broken | No locally observed critical-path break after the final production walkthrough. Hosted connected mode cannot start without credentials and is reported as unconfigured rather than silently falling back. |
+| ⚪ Missing | Applied hosted migrations, verified normalized Supabase repository, two-window Realtime proof, RLS denial tests, private Storage proof, live AI provider proof, deployed-URL verification. |
+| Do not touch | Frozen dispatch golden vectors, decision hashes, `/demo` storage isolation, the four mechanisms, six safeguards, protection-first execution order and seed 26089. |

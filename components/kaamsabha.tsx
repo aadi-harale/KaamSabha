@@ -32,6 +32,7 @@ import {
   type Receipt,
   type Simulation,
 } from '@/lib/engine';
+import { DispatchDecisionMap } from '@/components/dispatch-map';
 export const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 export const signed = (n: number, unit = '') =>
   `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}${unit}`;
@@ -246,7 +247,15 @@ export function MetricsTable({
     </div>
   );
 }
-export function Tradeoff({ a, b, basis = 'vs. standard dispatch' }: { a: Metrics; b: Metrics; basis?: string }) {
+export function Tradeoff({
+  a,
+  b,
+  basis = 'vs. standard dispatch',
+}: {
+  a: Metrics;
+  b: Metrics;
+  basis?: string;
+}) {
   return (
     <div className="tradeoff" aria-live="polite">
       <div>
@@ -295,7 +304,8 @@ export function ReceiptDialog({
   const exportReceipt = structuredClone(receipt) as Receipt & {
     job: Receipt['job'] & { requestedAtMinutesSince2026_08_31_IST?: number };
   };
-  exportReceipt.job.requestedAtMinutesSince2026_08_31_IST = exportReceipt.job.requested;
+  exportReceipt.job.requestedAtMinutesSince2026_08_31_IST =
+    exportReceipt.job.requested;
   delete (exportReceipt.job as Partial<Receipt['job']>).requested;
   return (
     <Dialog
@@ -326,6 +336,7 @@ export function ReceiptDialog({
           <ShieldCheck />
           <p>{receipt.reason}</p>
         </div>
+        <DispatchDecisionMap receipt={receipt} mode="decision" />
         <div className="receipt-candidates">
           {[...receipt.candidates]
             .sort(
@@ -556,6 +567,35 @@ export function Demo() {
           ),
     [progress, data, state.active, state.rates],
   );
+  const mapPair = useMemo(() => {
+    const pairs = standard.receipts.map((current) => ({
+      current,
+      cooperative: cooperative.receipts.find(
+        (receipt) => receipt.job.id === current.job.id,
+      )!,
+    }));
+    return (
+      pairs.find((pair) => {
+        const currentEta = pair.current.candidates.find(
+          (candidate) => candidate.worker.id === pair.current.selected,
+        )?.eta;
+        const cooperativeEta = pair.cooperative.candidates.find(
+          (candidate) => candidate.worker.id === pair.cooperative.selected,
+        )?.eta;
+        return (
+          pair.current.selected === 'W02' &&
+          pair.cooperative.selected === 'W01' &&
+          currentEta !== undefined &&
+          cooperativeEta !== undefined &&
+          cooperativeEta > currentEta
+        );
+      }) ??
+      pairs.find(
+        (pair) => pair.current.selected !== pair.cooperative.selected,
+      ) ??
+      pairs[0]
+    );
+  }, [standard, cooperative]);
   useEffect(() => {
     if (progress === null) return;
     const timer = setTimeout(() => {
@@ -655,6 +695,33 @@ export function Demo() {
             {state.active.parameters.maxDelay} min max
           </span>
         </div>
+        {mapPair && (
+          <div className="comparison-map-shell">
+            <div className="comparison-map-state">
+              <span>
+                {state.compared ? 'Member constitution' : 'Standard dispatch'}
+              </span>
+              <strong>
+                {data.workers.find(
+                  (worker) =>
+                    worker.id ===
+                    (state.compared
+                      ? mapPair.cooperative.selected
+                      : mapPair.current.selected),
+                )?.name ?? 'No assignment'}{' '}
+                selected
+              </strong>
+              <small>
+                Same request and positions. Only the active allocation rule
+                changes.
+              </small>
+            </div>
+            <DispatchDecisionMap
+              receipt={state.compared ? mapPair.cooperative : mapPair.current}
+              mode="governance"
+            />
+          </div>
+        )}
         {progress !== null && (
           <div aria-live="polite" className="run-progress">
             <span>

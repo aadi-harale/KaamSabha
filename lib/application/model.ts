@@ -10,6 +10,8 @@ import {
   type Receipt,
   type Worker,
 } from '../engine';
+import type { Locale } from '../i18n';
+import type { RouteResult } from './route-service';
 
 export type Persona = 'customer' | 'worker' | 'operations';
 export type Actor = { role: Persona; id: string };
@@ -19,14 +21,25 @@ export type JobStage =
   | 'accepted'
   | 'en-route'
   | 'arrived'
+  | 'start-verification'
   | 'working'
+  | 'completion-verification'
   | 'completed'
   | 'cancelled';
 export type Terms = {
   levyBps: number;
   dividendBps: number;
   workerCancellationPenalty: number;
+  customerTravelCompensation?: number;
 };
+export type ProtectionIntent =
+  | 'fair-opportunity'
+  | 'rating-cutoff'
+  | 'cheapest-bid'
+  | 'unsafe-refusal-penalty'
+  | 'sensitive-trait'
+  | 'paid-priority'
+  | 'workload-override';
 export type PolicyConsultation = {
   viewedAt: string;
   basisVersion: number;
@@ -39,6 +52,93 @@ export type LivePolicy = Policy & {
   terms: Terms;
   historicalJobIds: string[];
   consultations: Record<string, PolicyConsultation>;
+  protectionIntent?: ProtectionIntent;
+  protectionCheck?: { passed: true; checkedAt: string };
+};
+export type PriceBreakdown = {
+  customerTotal: number;
+  workerServicePay: number;
+  welfareContribution: number;
+  cooperativeOperations: number;
+  minimumWorkerPay: number;
+};
+export type RefusalReason =
+  | 'unsafe'
+  | 'out-of-scope'
+  | 'schedule-conflict'
+  | 'outside-service-area'
+  | 'other';
+export type OfferRefusal = {
+  workerId: string;
+  reason: RefusalReason;
+  at: string;
+  opportunityPenalty: 0;
+};
+export type MemberProfile = {
+  id: string;
+  membership: 'verified';
+  certificate: string;
+  serviceAreas: string[];
+  availability: 'available' | 'busy';
+  representative: 'member' | 'welfare-representative';
+  workload: {
+    availableUntil: number;
+    minimumRestGap: number;
+    maximumJobsToday: number;
+    heavyServiceLimit: number;
+    unavailablePeriods: { start: number; end: number }[];
+  };
+};
+export type OpportunityRecord = {
+  id: string;
+  jobId: string;
+  decisionId: string;
+  workerId: string;
+  valid: true;
+  outcome: 'offered' | 'accepted' | 'declined';
+  at: string;
+};
+export type ChangeOrder = {
+  id: string;
+  jobId: string;
+  workerId: string;
+  description: string;
+  labour: number;
+  material: number;
+  status: 'proposed' | 'approved' | 'declined';
+  proposedAt: string;
+  resolvedAt: string | null;
+};
+export type FeedbackRecord = {
+  id: string;
+  jobId: string;
+  rating: number;
+  note: string;
+  reviewRequired: boolean;
+  restrictionApplied: false;
+  at: string;
+};
+export type WorkabilityRecord = {
+  id: string;
+  jobId: string;
+  workerId: string;
+  signal: 'clear-scope' | 'scope-changed' | 'safe-site' | 'safety-concern';
+  sensitive: boolean;
+  status: 'recorded' | 'operations-review';
+  at: string;
+};
+export type SettlementRecord = {
+  id: string;
+  invoiceId: string;
+  jobId: string;
+  customerTotal: number;
+  workerPay: number;
+  welfareContribution: number;
+  cooperativeOperations: number;
+  approvedExtras: number;
+  disputedAmount: number;
+  status: 'settled' | 'partially-disputed';
+  settledAt: string;
 };
 export type MetricChange = {
   lowestLivelihood: number;
@@ -98,9 +198,55 @@ export type WorkOrder = {
   dispatchId: string;
   acceptedAt: string | null;
   departedAt: string | null;
+  arrivedAt?: string | null;
+  workStartedAt?: string | null;
   completedAt: string | null;
   cancellationId: string | null;
+  pricing?: PriceBreakdown;
+  refusals?: OfferRefusal[];
+  settlementId?: string | null;
+  emergency?: boolean;
+  route?: RouteResult | null;
+  travelProgress?: number;
   createdAt: string;
+};
+export type OtpType = 'start' | 'completion';
+export type JobOtp = {
+  id: string;
+  jobId: string;
+  type: OtpType;
+  codeHash: string;
+  customerCode: string;
+  issuedAt: string;
+  expiresAt: string;
+  attemptCount: number;
+  usedAt: string | null;
+  invalidatedAt: string | null;
+};
+export type EvidenceType =
+  | 'customer-reference'
+  | 'before'
+  | 'during'
+  | 'after'
+  | 'variance';
+export type JobEvidence = {
+  id: string;
+  jobId: string;
+  type: EvidenceType;
+  caption: string;
+  dataUrl: string;
+  mimeType: string;
+  size: number;
+  uploader: Actor;
+  createdAt: string;
+};
+export type AppNotification = {
+  id: string;
+  recipient: Actor;
+  messageKey: string;
+  params: Record<string, string | number>;
+  createdAt: string;
+  readAt: string | null;
 };
 export type CancellationInput = {
   actor: 'customer' | 'worker';
@@ -120,7 +266,12 @@ export type DecisionPayload = {
   previousHash: string;
   receipt: Receipt | null;
   evidence: CancellationInput | null;
-  outcome: { workerId: string | null; charge: number; attribution: string };
+  outcome: {
+    workerId: string | null;
+    charge: number;
+    attribution: string;
+    compensation?: number;
+  };
 };
 export type DecisionSnapshot = DecisionPayload & { hash: string };
 export type AppEvent = {
@@ -135,7 +286,14 @@ export type LedgerEntry = {
   id: string;
   jobId: string;
   workerId: string | null;
-  kind: 'work' | 'dividend' | 'reserve' | 'penalty' | 'remedy';
+  kind:
+    | 'work'
+    | 'dividend'
+    | 'reserve'
+    | 'welfare'
+    | 'travel-compensation'
+    | 'penalty'
+    | 'remedy';
   amount: number;
   at: string;
   decisionId: string;
@@ -162,7 +320,7 @@ export type CourtCase = {
   } | null;
 };
 export type ApplicationState = {
-  schema: 3;
+  schema: 6;
   revision: number;
   sequence: number;
   workers: Worker[];
@@ -176,12 +334,27 @@ export type ApplicationState = {
   challenges: CourtCase[];
   accountability: AccountabilityRecord[];
   catchUps: CatchUpAllocation[];
-  session: { persona: Persona; memberId: string };
+  members: MemberProfile[];
+  changeOrders: ChangeOrder[];
+  feedback: FeedbackRecord[];
+  workability: WorkabilityRecord[];
+  settlements: SettlementRecord[];
+  opportunities: OpportunityRecord[];
+  otps: JobOtp[];
+  evidence: JobEvidence[];
+  notifications: AppNotification[];
+  session: {
+    persona: Persona;
+    memberId: string;
+    customerName: string;
+    locale: Locale;
+    onboardingDone: Record<string, boolean>;
+  };
   rates: typeof assumptions;
 };
 export function emptyApplication(): ApplicationState {
   return {
-    schema: 3,
+    schema: 6,
     revision: 0,
     sequence: 0,
     workers: dataset().workers,
@@ -194,6 +367,7 @@ export function emptyApplication(): ApplicationState {
           levyBps: 500,
           dividendBps: 5000,
           workerCancellationPenalty: 100,
+          customerTravelCompensation: 70,
         },
         historicalJobIds: [],
         consultations: {},
@@ -207,7 +381,36 @@ export function emptyApplication(): ApplicationState {
     challenges: [],
     accountability: [],
     catchUps: [],
-    session: { persona: 'customer', memberId: 'W01' },
+    members: dataset().workers.map((worker, index) => ({
+      id: worker.id,
+      membership: 'verified',
+      certificate: `${worker.skills[0]} skill record`,
+      serviceAreas: [String(worker.zone)],
+      availability: worker.available ? 'available' : 'busy',
+      representative: index === 0 ? 'welfare-representative' : 'member',
+      workload: {
+        availableUntil: 19 * 60,
+        minimumRestGap: 30,
+        maximumJobsToday: 4,
+        heavyServiceLimit: 2,
+        unavailablePeriods: [],
+      },
+    })),
+    changeOrders: [],
+    feedback: [],
+    workability: [],
+    settlements: [],
+    opportunities: [],
+    otps: [],
+    evidence: [],
+    notifications: [],
+    session: {
+      persona: 'customer',
+      memberId: 'W01',
+      customerName: 'Demo customer',
+      locale: 'en',
+      onboardingDone: {},
+    },
     rates: copy(assumptions),
   };
 }
