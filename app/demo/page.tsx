@@ -1,4 +1,4 @@
-import { Demo } from '@/components/kaamsabha';
+import { JudgeDemo } from '@/components/judge-demo';
 export default function Page() {
-  return <Demo />;
+  return <JudgeDemo />;
 }
