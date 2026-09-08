@@ -3,6 +3,7 @@ import { AppProvider } from '@/lib/store';
 import { ApplicationProvider } from '@/lib/application/provider';
 import './globals.css';
 import './product.css';
+import './judge.css';
 export const metadata: Metadata = {
   title: 'KAAMSABHA | The rules belong to workers',
   description:
