@@ -11,7 +11,7 @@ jobs:
   screenshot:
     if: github.head_ref == 'iteration-2-judge-flow'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,15 +31,55 @@ jobs:
           done
           cat /tmp/kaamsabha-server.log
           exit 1
-      - name: Install Chromium
-        run: npx --yes playwright@1.55.0 install --with-deps chromium
-      - name: Capture desktop
-        run: npx --yes playwright@1.55.0 screenshot --browser chromium --viewport-size='1440,900' --full-page http://127.0.0.1:8787/demo iteration2-desktop.png
-      - name: Capture mobile
-        run: npx --yes playwright@1.55.0 screenshot --browser chromium --viewport-size='390,844' --full-page http://127.0.0.1:8787/demo iteration2-mobile.png
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Exercise judge flow and capture screenshots
+        run: |
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+
+          const base = 'http://127.0.0.1:8787';
+          const browser = await chromium.launch({ headless: true });
+          const viewports = [
+            ['desktop', { width: 1440, height: 900 }],
+            ['mobile', { width: 390, height: 844 }],
+          ];
+
+          for (const [name, viewport] of viewports) {
+            const context = await browser.newContext({ viewport });
+            const page = await context.newPage();
+            await page.goto(`${base}/demo`, { waitUntil: 'networkidle' });
+            await page.screenshot({ path: `iteration2-${name}-initial.png`, fullPage: true });
+
+            await page.getByRole('button', { name: 'Run comparison' }).click();
+            await page.locator('.judge-proof-line').waitFor({ state: 'visible', timeout: 8000 });
+            const constitutionResult = await page.locator('.constitution-decision strong').first().textContent();
+            if (!constitutionResult || constitutionResult.includes('Waiting')) {
+              throw new Error(`Constitution result did not reveal on ${name}.`);
+            }
+            await page.screenshot({ path: `iteration2-${name}-compared.png`, fullPage: true });
+
+            await page.getByRole('button', { name: /Explain the assignment/ }).click();
+            await page.getByRole('dialog').getByText('Why this assignment?').waitFor();
+            await page.keyboard.press('Escape');
+
+            await page.getByRole('link', { name: /Govern the next rule/ }).click();
+            await page.waitForURL('**/demo/governance');
+            await page.getByRole('heading', { name: 'The rules are ours to write.' }).waitFor();
+
+            await page.goto(`${base}/demo`, { waitUntil: 'networkidle' });
+            await page.getByRole('link', { name: /Challenge a decision/ }).click();
+            await page.waitForURL('**/demo/worker?challenge=true');
+            await page.getByText('Replay Court').waitFor();
+            await page.screenshot({ path: `iteration2-${name}-challenge.png`, fullPage: true });
+            await context.close();
+          }
+
+          await browser.close();
+          NODE
       - uses: actions/upload-artifact@v4
         with:
           name: iteration2-screenshots
-          path: |
-            iteration2-desktop.png
-            iteration2-mobile.png
+          path: iteration2-*.png
