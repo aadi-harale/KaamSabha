@@ -1,0 +1,45 @@
+name: Iteration 2 visual check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    if: github.head_ref == 'iteration-2-judge-flow'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.2'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Start production server
+        run: |
+          npm run start > /tmp/kaamsabha-server.log 2>&1 &
+          for i in {1..45}; do
+            if curl --fail --silent http://127.0.0.1:8787/demo > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/kaamsabha-server.log
+          exit 1
+      - name: Install Chromium
+        run: npx --yes playwright@1.55.0 install --with-deps chromium
+      - name: Capture desktop
+        run: npx --yes playwright@1.55.0 screenshot --browser chromium --viewport-size='1440,900' --full-page http://127.0.0.1:8787/demo iteration2-desktop.png
+      - name: Capture mobile
+        run: npx --yes playwright@1.55.0 screenshot --browser chromium --viewport-size='390,844' --full-page http://127.0.0.1:8787/demo iteration2-mobile.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iteration2-screenshots
+          path: |
+            iteration2-desktop.png
+            iteration2-mobile.png
