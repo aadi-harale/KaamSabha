@@ -16,7 +16,8 @@ The Federation Opportunity Exchange adds a second protected decision layer: the 
 - `/operations` with `/jobs`, `/workers`, `/issues`, `/settlements`, `/demand`: cooperative-admin registers with grouped responsive navigation.
 - `/operations/federation`: capacity map, overflow request, cooperative candidates, two-level receipt, replay, settlement and Local-only versus Federation Mesh Policy Twin.
 - `/governance`: protection validation, Policy Twin, voting, activation, accountability and bounded catch-up.
-- `/demo` and `/demo/*`: isolated deterministic judge presentation using the same engine.
+- `/demo`: judge-first deterministic proof: same request and worker set under standard dispatch versus the member constitution, followed by full-week outcomes and working explain/govern/challenge actions.
+- `/demo/worker`, `/demo/customer`, `/demo/governance`, `/demo/operations`: isolated supporting judge mechanisms using the same engine.
 - `/api/ai/intake` and compatibility `/api/intake`: server-key-only structured OpenRouter intake.
 
 Normal headers expose no cross-role switch. Logout is the only role-change path. Client guards block rendering and redirect direct cross-role URLs. The Supabase schema provides the data boundary with profile roles and RLS.
@@ -41,10 +42,14 @@ Hard skill, active status, availability, schedule, radius, SLA and workload safe
 
 AGENTS.md is authoritative. The application canvas is #F6F8FA with #17212B ink, #0F6B5C cooperative action, #5B6672 secondary text and #DDE3E8 borders. Segoe UI/system sans uses Devanagari-capable fallbacks. Same jobs, same workers, different rule remains the one bold visual moment. Customer is service-first, worker is task-first, operations is record-first and governance is consequence-first. Borders encode records and state; gradients, glass, fake maps and repeated decorative cards remain excluded. English, Hindi and Marathi navigation and critical role controls use centralized resources.
 
+Iteration 2 makes the causal proof explicit before the wider dashboard: one deterministic request is shown as Standard dispatch → Only the rule changed → Member constitution. The supporting map is collapsed by default, the 100-job register follows the single-request proof, and the next judge actions are exactly Explain assignment → Govern next rule → Challenge decision.
+
 # Verified functionality
 
 - Deterministic dispatch, golden vectors, workload exclusions and all six safeguards pass tests.
-- Assignment receipts now render the canonical executable policy rule from the same `Policy` object consumed by dispatch: hard eligibility first, the member-approved livelihood floor and maximum added wait second, optional job-net tie-breaking only when enabled, and emergency bypass stated explicitly.
+- Assignment receipts render the canonical executable policy rule from the same `Policy` object consumed by dispatch: hard eligibility first, the member-approved livelihood floor and maximum added wait second, optional job-net tie-breaking only when enabled, and emergency bypass stated explicitly.
+- The judge comparison helper freezes the same request on both sides and deterministically prefers the Ravi/W02 → Meena/W01 example when available. In the current seed that request changes from 10-minute Ravi to 17-minute Meena, a +7-minute wait inside constitution v2's +8-minute limit.
+- The full 100-job comparison remains engine-derived and reports zero additional SLA violations; the one-request proof, week-level bars and trade-off therefore tell one consistent story.
 - Booking creates a job, opportunity, event, frozen receipt and worker notification. Decline is zero-penalty and redispatches deterministically.
 - OSRM road geometry feeds one saved route shared by customer and worker; routing/tile failures have explicit accessible fallbacks.
 - OTP start/completion, evidence, change orders, settlement, rating firewall, cancellation, governance, accountability, catch-up and Replay Court remain present.
@@ -60,13 +65,15 @@ AGENTS.md is authoritative. The application canvas is #F6F8FA with #17212B ink, 
 
 # Production browser evidence
 
-The final interface correction was inspected at 1440×900 and 390×844. Operations uses a 252 px desktop navigation rail, one content navigation system, a restrained demo-status strip and stable register grids. Worker home leads with the next job, availability and compact livelihood metrics; worker issues stays within the mobile viewport and gives enabled actions clear emphasis. Operations, Jobs, Workers, Issues, Worker Home, Current Job, Fair Work and Worker Issues rendered with no error overlay. Internal event, issue and status codes are presented as human-readable labels.
+The existing application interface was previously inspected at 1440×900 and 390×844. Operations uses a 252 px desktop navigation rail, one content navigation system, a restrained demo-status strip and stable register grids. Worker home leads with the next job, availability and compact livelihood metrics; worker issues stays within the mobile viewport and gives enabled actions clear emphasis. Operations, Jobs, Workers, Issues, Worker Home, Current Job, Fair Work and Worker Issues rendered with no error overlay. Internal event, issue and status codes are presented as human-readable labels.
 
-A production-browser authentication walkthrough at `http://127.0.0.1:8787` created `KMS-LIVE-00001` through all five booking steps. Active constitution v2 assigned Ravi Shinde with ₹760 service pay, ₹87 estimated costs and ₹673 estimated net. The customer map showed Ravi, 1 km, 10 minutes and the service promise. After logout, `ravi01` alone showed that offer, its workload summary and the simplified receipt. Customer→worker and admin→customer direct URL attempts redirected to the signed-in role home. Customer, worker and admin headers contained no cross-role selector. Login, customer home/map, worker home/current/Fair Work/receipt and admin overview/governance were visually inspected at the available wide and narrow app-panel sizes.
+A production-browser authentication walkthrough at `http://127.0.0.1:8787` created `KMS-LIVE-00001` through all five booking steps. Active constitution v2 assigned Ravi Shinde with ₹760 service pay, ₹87 estimated costs and ₹673 estimated net. The customer map showed Ravi, 1 km, 10 minutes and the service promise. After logout, `ravi01` alone showed that offer, its workload summary and the simplified receipt. Customer→worker and admin→customer direct URL attempts redirected to the signed-in role home. Customer, worker and admin headers contained no cross-role selector.
 
 The earlier complete lifecycle verification remains valid: OSRM returned a 1.7 km/3-minute route for a separate illustrative booking; explicit travel, start OTP, completion OTP, settlement and refresh persistence passed. Marathi customer/worker views at 390×844 had no page overflow.
 
 The production browser ran the federation scenario, rendered the Leaflet capacity map, selected Yerawada, displayed both linked receipts, replayed the frozen cooperative decision as confirmed and calculated Local-only 0/12 served versus Federation Mesh 11/12 served with 22.5-minute average ETA, 25-minute p90 and zero protection violations. Customer view showed only Meena, 17 minutes, 3.2 km and a subtle federation note. Meena's worker view showed ₹760 pay, ₹134 estimated costs and ₹626 estimated net with unchanged protections.
+
+For Iteration 2, a one-time Playwright production-browser verification ran the final judge route at 1440×900 and 390×844. Both sizes loaded `/demo`, ran the comparison until the constitution result appeared, opened the assignment receipt, navigated to governance and confirmed the governance heading, then navigated to the challenge path and confirmed Replay Court. Initial, compared and challenge screenshots were captured for both widths and inspected; the judge proof remained readable and no horizontal page overflow was observed.
 
 # Known limitations
 
@@ -81,12 +88,12 @@ The production browser ran the federation scenario, rendered the Leaflet capacit
 
 # Verified commands
 
-- `npm test -- --reporter=dot`: 85 tests passed across 11 files.
+- `npm test -- --reporter=dot`: 88 tests passed across 12 files.
 - `npm run typecheck`: passed.
 - `npm run lint`: passed with 0 warnings and 0 errors.
-- `npm run build`: passed; the existing routes plus /operations/federation emitted.
-- GitHub Actions `Verify` runs install, tests, typecheck, lint and production build on pull requests and main; Iteration 1 passed all gates on the merged main commit.
-- Production browser: customer, assigned worker and admin login; cross-role redirects; five-step booking; real map; member-bound job; simplified receipt; responsive role navigation; no application error overlay observed.
+- `npm run build`: passed; `/demo` and all existing application routes emitted.
+- GitHub Actions `Verify` runs install, tests, typecheck, lint and production build on pull requests and main; Iteration 2 passed all gates before merge.
+- One-time production-browser verification: 1440×900 and 390×844, Run comparison → Explain assignment → Govern next rule → Challenge decision; all assertions and screenshot captures passed.
 
 # Next actions
 
